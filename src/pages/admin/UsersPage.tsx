@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import type { Tables, Enums } from "@/integrations/supabase/types";
 
-type Profile = Tables<"profiles"> & { user_roles?: { role: Enums<"app_role"> }[] };
+type Profile = Tables<"profiles"> & { user_roles?: { role: string }[] };
 
 const roleLabels: Record<string, string> = { admin: "Admin", user: "Foydalanuvchi", content_maker: "Kontent yaratuvchi" };
 
