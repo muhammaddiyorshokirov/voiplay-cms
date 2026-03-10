@@ -37,7 +37,7 @@ const App = () => (
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<Navigate to="/admin" replace />} />
-            <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
+            <Route path="/admin" element={<ProtectedRoute requireAdmin><AdminLayout /></ProtectedRoute>}>
               <Route index element={<DashboardPage />} />
               <Route path="content" element={<ContentListPage />} />
               <Route path="content/:id" element={<ContentEditorPage />} />
