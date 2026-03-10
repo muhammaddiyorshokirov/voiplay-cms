@@ -15,6 +15,9 @@ import EpisodesPage from "@/pages/admin/EpisodesPage";
 import BannersPage from "@/pages/admin/BannersPage";
 import NotificationsPage from "@/pages/admin/NotificationsPage";
 import UsersPage from "@/pages/admin/UsersPage";
+import ReviewQueuePage from "@/pages/admin/ReviewQueuePage";
+import AuditLogsPage from "@/pages/admin/AuditLogsPage";
+import SettingsPage from "@/pages/admin/SettingsPage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -47,6 +50,9 @@ const App = () => (
               <Route path="banners" element={<BannersPage />} />
               <Route path="notifications" element={<NotificationsPage />} />
               <Route path="users" element={<UsersPage />} />
+              <Route path="review" element={<ReviewQueuePage />} />
+              <Route path="audit" element={<AuditLogsPage />} />
+              <Route path="settings" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
