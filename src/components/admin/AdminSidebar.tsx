@@ -1,0 +1,143 @@
+import {
+  LayoutDashboard, Film, Tv, Clapperboard, FolderOpen, ListVideo,
+  Tags, Bell, ShieldCheck, Users, Settings, LogOut, Layers, Upload, ScrollText, ChevronDown
+} from "lucide-react";
+import { NavLink } from "@/components/NavLink";
+import { useLocation } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import { cn } from "@/lib/utils";
+import { useState } from "react";
+
+interface NavItem {
+  title: string;
+  url: string;
+  icon: React.ElementType;
+  children?: { title: string; url: string }[];
+  adminOnly?: boolean;
+}
+
+const navItems: NavItem[] = [
+  { title: "Boshqaruv paneli", url: "/admin", icon: LayoutDashboard },
+  {
+    title: "Kontent",
+    url: "/admin/content",
+    icon: Film,
+    children: [
+      { title: "Barcha kontent", url: "/admin/content" },
+      { title: "Anime", url: "/admin/content?type=anime" },
+      { title: "Serial", url: "/admin/content?type=serial" },
+      { title: "Kino", url: "/admin/content?type=movie" },
+      { title: "Yangi qo'shish", url: "/admin/content/new" },
+    ],
+  },
+  { title: "Fasllar", url: "/admin/seasons", icon: Layers },
+  { title: "Epizodlar", url: "/admin/episodes", icon: ListVideo },
+  { title: "Janrlar", url: "/admin/genres", icon: Tags },
+  { title: "Bannerlar", url: "/admin/banners", icon: Upload },
+  { title: "Bildirishnomalar", url: "/admin/notifications", icon: Bell },
+  { title: "Tekshiruv navbati", url: "/admin/review", icon: ShieldCheck },
+  { title: "Foydalanuvchilar", url: "/admin/users", icon: Users, adminOnly: true },
+  { title: "Audit loglari", url: "/admin/audit", icon: ScrollText, adminOnly: true },
+  { title: "Sozlamalar", url: "/admin/settings", icon: Settings, adminOnly: true },
+];
+
+export function AdminSidebar() {
+  const location = useLocation();
+  const { profile, isAdmin, signOut } = useAuth();
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+
+  const isActive = (url: string) => {
+    if (url === "/admin") return location.pathname === "/admin";
+    return location.pathname.startsWith(url.split("?")[0]);
+  };
+
+  const filteredItems = navItems.filter((item) => !item.adminOnly || isAdmin);
+
+  return (
+    <aside className="fixed left-0 top-0 z-40 flex h-screen w-60 flex-col border-r border-border bg-sidebar">
+      {/* Logo */}
+      <div className="flex h-16 items-center gap-2 border-b border-border px-5">
+        <Tv className="h-7 w-7 text-primary" />
+        <span className="font-heading text-lg font-bold text-foreground">VoiPlay</span>
+        <span className="ml-0.5 text-xs font-medium text-muted-foreground">TV</span>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto py-4 px-3">
+        <ul className="space-y-1">
+          {filteredItems.map((item) => {
+            const active = isActive(item.url);
+            const hasChildren = item.children && item.children.length > 0;
+            const groupOpen = openGroup === item.title || active;
+
+            return (
+              <li key={item.title}>
+                {hasChildren ? (
+                  <>
+                    <button
+                      onClick={() => setOpenGroup(groupOpen ? null : item.title)}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-heading font-medium transition-colors",
+                        active
+                          ? "border-l-2 border-primary bg-sidebar-accent text-foreground"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
+                      )}
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      <span className="flex-1 text-left">{item.title}</span>
+                      <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", groupOpen && "rotate-180")} />
+                    </button>
+                    {groupOpen && (
+                      <ul className="ml-7 mt-1 space-y-0.5 border-l border-border pl-3">
+                        {item.children!.map((child) => (
+                          <li key={child.url}>
+                            <NavLink
+                              to={child.url}
+                              end
+                              className="block rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                              activeClassName="text-primary font-medium"
+                            >
+                              {child.title}
+                            </NavLink>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                ) : (
+                  <NavLink
+                    to={item.url}
+                    end={item.url === "/admin"}
+                    className={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-heading font-medium transition-colors",
+                      "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
+                    )}
+                    activeClassName="border-l-2 border-primary bg-sidebar-accent text-foreground"
+                  >
+                    <item.icon className="h-4 w-4 shrink-0" />
+                    <span>{item.title}</span>
+                  </NavLink>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+
+      {/* User */}
+      <div className="border-t border-border p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-xs font-heading font-semibold text-foreground">
+            {profile?.full_name?.[0]?.toUpperCase() || "U"}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="truncate text-sm font-medium text-foreground">{profile?.full_name || "Foydalanuvchi"}</p>
+          </div>
+          <button onClick={signOut} className="text-muted-foreground hover:text-destructive transition-colors">
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}
