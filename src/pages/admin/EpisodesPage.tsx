@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { DataTable } from "@/components/admin/DataTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
+import { R2Upload } from "@/components/admin/R2Upload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -94,9 +95,9 @@ export default function EpisodesPage() {
         )},
       ]} />
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="bg-card border-border max-w-lg">
+        <DialogContent className="bg-card border-border max-w-lg max-h-[90vh]">
           <DialogHeader><DialogTitle className="font-heading text-foreground">{editing ? "Epizodni tahrirlash" : "Yangi epizod"}</DialogTitle></DialogHeader>
-          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+          <div className="space-y-4 overflow-y-auto pr-2" style={{ maxHeight: "calc(90vh - 100px)" }}>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Kontent</Label>
               <Select value={form.content_id || ""} onValueChange={(v) => setForm((f) => ({ ...f, content_id: v, season_id: "" }))}>
@@ -119,10 +120,49 @@ export default function EpisodesPage() {
             </div>
             <div className="space-y-2"><Label className="text-sm text-muted-foreground">Nomi</Label><Input value={form.title || ""} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} className="bg-background border-border" /></div>
             <div className="space-y-2"><Label className="text-sm text-muted-foreground">Tavsif</Label><Textarea value={form.description || ""} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2} className="bg-background border-border" /></div>
-            <div className="space-y-2"><Label className="text-sm text-muted-foreground">Video URL</Label><Input value={form.video_url || ""} onChange={(e) => setForm((f) => ({ ...f, video_url: e.target.value }))} className="bg-background border-border" /></div>
-            <div className="space-y-2"><Label className="text-sm text-muted-foreground">Stream URL</Label><Input value={form.stream_url || ""} onChange={(e) => setForm((f) => ({ ...f, stream_url: e.target.value }))} className="bg-background border-border" /></div>
-            <div className="space-y-2"><Label className="text-sm text-muted-foreground">Thumbnail URL</Label><Input value={form.thumbnail_url || ""} onChange={(e) => setForm((f) => ({ ...f, thumbnail_url: e.target.value }))} className="bg-background border-border" /></div>
-            <div className="space-y-2"><Label className="text-sm text-muted-foreground">Subtitl URL</Label><Input value={form.subtitle_url || ""} onChange={(e) => setForm((f) => ({ ...f, subtitle_url: e.target.value }))} className="bg-background border-border" /></div>
+
+            {/* R2 Upload fields */}
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Video fayl</Label>
+              <R2Upload
+                folder="episodes"
+                accept="video/*"
+                label="Video yuklash (mp4, mkv, webm)"
+                value={form.video_url || ""}
+                maxSizeMB={500}
+                onUploadComplete={(url) => setForm((f) => ({ ...f, video_url: url }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Thumbnail rasm</Label>
+              <R2Upload
+                folder="thumbnails"
+                accept="image/*"
+                label="Thumbnail yuklash (jpg, png, webp)"
+                value={form.thumbnail_url || ""}
+                maxSizeMB={10}
+                onUploadComplete={(url) => setForm((f) => ({ ...f, thumbnail_url: url }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Subtitl fayl</Label>
+              <R2Upload
+                folder="subtitles"
+                accept=".srt,.vtt,.ass,.ssa"
+                label="Subtitl yuklash (srt, vtt, ass)"
+                value={form.subtitle_url || ""}
+                maxSizeMB={5}
+                onUploadComplete={(url) => setForm((f) => ({ ...f, subtitle_url: url }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Stream URL (ixtiyoriy)</Label>
+              <Input value={form.stream_url || ""} onChange={(e) => setForm((f) => ({ ...f, stream_url: e.target.value }))} className="bg-background border-border" placeholder="https://..." />
+            </div>
+
             <div className="flex gap-6">
               <div className="flex items-center gap-2"><Switch checked={!!form.is_published} onCheckedChange={(v) => setForm((f) => ({ ...f, is_published: v }))} /><Label className="text-sm text-foreground">Nashr qilingan</Label></div>
               <div className="flex items-center gap-2"><Switch checked={!!form.is_premium} onCheckedChange={(v) => setForm((f) => ({ ...f, is_premium: v }))} /><Label className="text-sm text-foreground">Premium</Label></div>
