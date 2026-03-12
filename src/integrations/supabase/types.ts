@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      api_auth_sessions: {
+        Row: {
+          created_at: string
+          device_id: string | null
+          id: string
+          revoked_at: string | null
+          supabase_session_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          device_id?: string | null
+          id?: string
+          revoked_at?: string | null
+          supabase_session_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          device_id?: string | null
+          id?: string
+          revoked_at?: string | null
+          supabase_session_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       app_logs: {
         Row: {
           context: Json
@@ -103,14 +133,90 @@ export type Database = {
           },
         ]
       }
+      channel_talents: {
+        Row: {
+          channel_id: string
+          created_at: string
+          display_name: string | null
+          gender: Database["public"]["Enums"]["talent_gender"]
+          id: string
+          is_active: boolean
+          is_primary: boolean
+          joined_at: string | null
+          left_at: string | null
+          notes: string | null
+          quality_tier: Database["public"]["Enums"]["talent_quality_tier"]
+          role_type: Database["public"]["Enums"]["talent_role_type"]
+          sort_order: number
+          talent_id: string
+          updated_at: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          display_name?: string | null
+          gender?: Database["public"]["Enums"]["talent_gender"]
+          id?: string
+          is_active?: boolean
+          is_primary?: boolean
+          joined_at?: string | null
+          left_at?: string | null
+          notes?: string | null
+          quality_tier?: Database["public"]["Enums"]["talent_quality_tier"]
+          role_type: Database["public"]["Enums"]["talent_role_type"]
+          sort_order?: number
+          talent_id: string
+          updated_at?: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          display_name?: string | null
+          gender?: Database["public"]["Enums"]["talent_gender"]
+          id?: string
+          is_active?: boolean
+          is_primary?: boolean
+          joined_at?: string | null
+          left_at?: string | null
+          notes?: string | null
+          quality_tier?: Database["public"]["Enums"]["talent_quality_tier"]
+          role_type?: Database["public"]["Enums"]["talent_role_type"]
+          sort_order?: number
+          talent_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_talents_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "content_maker_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_talents_talent_id_fkey"
+            columns: ["talent_id"]
+            isOneToOne: false
+            referencedRelation: "talents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       comments: {
         Row: {
           body: string
           content_id: string
           created_at: string
+          deleted_at: string | null
+          dislike_count: number
+          edited_at: string | null
           episode_id: string | null
           id: string
           is_hidden: boolean
+          like_count: number
+          parent_comment_id: string | null
+          pinned_by_admin: boolean
+          status: string
           updated_at: string
           user_id: string
         }
@@ -118,9 +224,16 @@ export type Database = {
           body: string
           content_id: string
           created_at?: string
+          deleted_at?: string | null
+          dislike_count?: number
+          edited_at?: string | null
           episode_id?: string | null
           id?: string
           is_hidden?: boolean
+          like_count?: number
+          parent_comment_id?: string | null
+          pinned_by_admin?: boolean
+          status?: string
           updated_at?: string
           user_id: string
         }
@@ -128,9 +241,16 @@ export type Database = {
           body?: string
           content_id?: string
           created_at?: string
+          deleted_at?: string | null
+          dislike_count?: number
+          edited_at?: string | null
           episode_id?: string | null
           id?: string
           is_hidden?: boolean
+          like_count?: number
+          parent_comment_id?: string | null
+          pinned_by_admin?: boolean
+          status?: string
           updated_at?: string
           user_id?: string
         }
@@ -147,6 +267,13 @@ export type Database = {
             columns: ["episode_id"]
             isOneToOne: false
             referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_parent_comment_id_fkey"
+            columns: ["parent_comment_id"]
+            isOneToOne: false
+            referencedRelation: "comments"
             referencedColumns: ["id"]
           },
         ]
@@ -194,6 +321,8 @@ export type Database = {
           id: string
           instagram_url: string | null
           owner_id: string
+          rating_avg: number
+          rating_votes_count: number
           status: Database["public"]["Enums"]["channel_status"]
           telegram_url: string | null
           updated_at: string
@@ -208,6 +337,8 @@ export type Database = {
           id?: string
           instagram_url?: string | null
           owner_id: string
+          rating_avg?: number
+          rating_votes_count?: number
           status?: Database["public"]["Enums"]["channel_status"]
           telegram_url?: string | null
           updated_at?: string
@@ -222,12 +353,49 @@ export type Database = {
           id?: string
           instagram_url?: string | null
           owner_id?: string
+          rating_avg?: number
+          rating_votes_count?: number
           status?: Database["public"]["Enums"]["channel_status"]
           telegram_url?: string | null
           updated_at?: string
           youtube_url?: string | null
         }
         Relationships: []
+      }
+      content_ratings: {
+        Row: {
+          content_id: string
+          created_at: string
+          id: string
+          score: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content_id: string
+          created_at?: string
+          id?: string
+          score: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content_id?: string
+          created_at?: string
+          id?: string
+          score?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_ratings_content_id_fkey"
+            columns: ["content_id"]
+            isOneToOne: false
+            referencedRelation: "contents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       content_views: {
         Row: {
@@ -269,18 +437,22 @@ export type Database = {
           deleted_at: string | null
           description: string | null
           duration_minutes: number | null
+          external_id: string
           has_dub: boolean
           has_subtitle: boolean
           id: string
           imdb_rating: number | null
           is_featured: boolean
           is_premium: boolean
+          is_recommended: boolean
           is_trending: boolean
           poster_url: string | null
           publish_status: Database["public"]["Enums"]["publish_status"]
           published_at: string | null
           quality_label: string | null
           rating: number | null
+          rating_avg: number
+          rating_votes_count: number
           slug: string
           status: Database["public"]["Enums"]["content_status"]
           studio: string | null
@@ -305,18 +477,22 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           duration_minutes?: number | null
+          external_id: string
           has_dub?: boolean
           has_subtitle?: boolean
           id?: string
           imdb_rating?: number | null
           is_featured?: boolean
           is_premium?: boolean
+          is_recommended?: boolean
           is_trending?: boolean
           poster_url?: string | null
           publish_status?: Database["public"]["Enums"]["publish_status"]
           published_at?: string | null
           quality_label?: string | null
           rating?: number | null
+          rating_avg?: number
+          rating_votes_count?: number
           slug: string
           status?: Database["public"]["Enums"]["content_status"]
           studio?: string | null
@@ -341,18 +517,22 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           duration_minutes?: number | null
+          external_id?: string
           has_dub?: boolean
           has_subtitle?: boolean
           id?: string
           imdb_rating?: number | null
           is_featured?: boolean
           is_premium?: boolean
+          is_recommended?: boolean
           is_trending?: boolean
           poster_url?: string | null
           publish_status?: Database["public"]["Enums"]["publish_status"]
           published_at?: string | null
           quality_label?: string | null
           rating?: number | null
+          rating_avg?: number
+          rating_votes_count?: number
           slug?: string
           status?: Database["public"]["Enums"]["content_status"]
           studio?: string | null
@@ -377,6 +557,60 @@ export type Database = {
           },
         ]
       }
+      episode_talent_credits: {
+        Row: {
+          channel_talent_id: string
+          character_name: string | null
+          created_at: string
+          credit_role: Database["public"]["Enums"]["talent_role_type"]
+          episode_id: string
+          id: string
+          notes: string | null
+          sort_order: number
+          updated_at: string
+          voice_style: string | null
+        }
+        Insert: {
+          channel_talent_id: string
+          character_name?: string | null
+          created_at?: string
+          credit_role: Database["public"]["Enums"]["talent_role_type"]
+          episode_id: string
+          id?: string
+          notes?: string | null
+          sort_order?: number
+          updated_at?: string
+          voice_style?: string | null
+        }
+        Update: {
+          channel_talent_id?: string
+          character_name?: string | null
+          created_at?: string
+          credit_role?: Database["public"]["Enums"]["talent_role_type"]
+          episode_id?: string
+          id?: string
+          notes?: string | null
+          sort_order?: number
+          updated_at?: string
+          voice_style?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "episode_talent_credits_channel_talent_id_fkey"
+            columns: ["channel_talent_id"]
+            isOneToOne: false
+            referencedRelation: "channel_talents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "episode_talent_credits_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       episodes: {
         Row: {
           channel_id: string | null
@@ -385,11 +619,18 @@ export type Database = {
           description: string | null
           duration_seconds: number | null
           episode_number: number
+          external_id: string
           id: string
+          intro_end_seconds: number | null
+          intro_start_seconds: number | null
+          is_comment_enabled: boolean
+          is_downloadable: boolean
           is_premium: boolean
           is_published: boolean
+          premium_unlock_at: string | null
           release_date: string | null
           season_id: string | null
+          status: Database["public"]["Enums"]["episode_status"]
           stream_url: string | null
           subtitle_url: string | null
           thumbnail_url: string | null
@@ -405,11 +646,18 @@ export type Database = {
           description?: string | null
           duration_seconds?: number | null
           episode_number: number
+          external_id: string
           id?: string
+          intro_end_seconds?: number | null
+          intro_start_seconds?: number | null
+          is_comment_enabled?: boolean
+          is_downloadable?: boolean
           is_premium?: boolean
           is_published?: boolean
+          premium_unlock_at?: string | null
           release_date?: string | null
           season_id?: string | null
+          status?: Database["public"]["Enums"]["episode_status"]
           stream_url?: string | null
           subtitle_url?: string | null
           thumbnail_url?: string | null
@@ -425,11 +673,18 @@ export type Database = {
           description?: string | null
           duration_seconds?: number | null
           episode_number?: number
+          external_id?: string
           id?: string
+          intro_end_seconds?: number | null
+          intro_start_seconds?: number | null
+          is_comment_enabled?: boolean
+          is_downloadable?: boolean
           is_premium?: boolean
           is_published?: boolean
+          premium_unlock_at?: string | null
           release_date?: string | null
           season_id?: string | null
+          status?: Database["public"]["Enums"]["episode_status"]
           stream_url?: string | null
           subtitle_url?: string | null
           thumbnail_url?: string | null
@@ -541,41 +796,59 @@ export type Database = {
       }
       premium_plans: {
         Row: {
+          badge_text: string | null
+          benefits: Json
           code: string
           created_at: string
           days: number
           description: string | null
+          discount_percent: number
           download_allowed: boolean
           id: string
           is_active: boolean
+          is_featured: boolean
+          is_visible: boolean
           max_devices: number
           name: string
+          old_price: number | null
           price: number
           updated_at: string
         }
         Insert: {
+          badge_text?: string | null
+          benefits?: Json
           code: string
           created_at?: string
           days: number
           description?: string | null
+          discount_percent?: number
           download_allowed?: boolean
           id?: string
           is_active?: boolean
+          is_featured?: boolean
+          is_visible?: boolean
           max_devices?: number
           name: string
+          old_price?: number | null
           price?: number
           updated_at?: string
         }
         Update: {
+          badge_text?: string | null
+          benefits?: Json
           code?: string
           created_at?: string
           days?: number
           description?: string | null
+          discount_percent?: number
           download_allowed?: boolean
           id?: string
           is_active?: boolean
+          is_featured?: boolean
+          is_visible?: boolean
           max_devices?: number
           name?: string
+          old_price?: number | null
           price?: number
           updated_at?: string
         }
@@ -752,6 +1025,57 @@ export type Database = {
           },
         ]
       }
+      talents: {
+        Row: {
+          bio: string | null
+          country_code: string | null
+          created_at: string
+          default_quality: Database["public"]["Enums"]["talent_quality_tier"]
+          default_role: Database["public"]["Enums"]["talent_role_type"]
+          full_name: string
+          gender: Database["public"]["Enums"]["talent_gender"]
+          id: string
+          is_active: boolean
+          language_code: string | null
+          metadata: Json
+          profile_image_url: string | null
+          slug: string | null
+          updated_at: string
+        }
+        Insert: {
+          bio?: string | null
+          country_code?: string | null
+          created_at?: string
+          default_quality?: Database["public"]["Enums"]["talent_quality_tier"]
+          default_role?: Database["public"]["Enums"]["talent_role_type"]
+          full_name: string
+          gender?: Database["public"]["Enums"]["talent_gender"]
+          id?: string
+          is_active?: boolean
+          language_code?: string | null
+          metadata?: Json
+          profile_image_url?: string | null
+          slug?: string | null
+          updated_at?: string
+        }
+        Update: {
+          bio?: string | null
+          country_code?: string | null
+          created_at?: string
+          default_quality?: Database["public"]["Enums"]["talent_quality_tier"]
+          default_role?: Database["public"]["Enums"]["talent_role_type"]
+          full_name?: string
+          gender?: Database["public"]["Enums"]["talent_gender"]
+          id?: string
+          is_active?: boolean
+          language_code?: string | null
+          metadata?: Json
+          profile_image_url?: string | null
+          slug?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       tokens: {
         Row: {
           created_at: string
@@ -784,8 +1108,10 @@ export type Database = {
       }
       user_devices: {
         Row: {
+          app_version: string | null
           browser_name: string | null
           browser_version: string | null
+          country_code: string | null
           created_at: string
           device_id: string
           device_name: string
@@ -795,20 +1121,26 @@ export type Database = {
           force_logout_at: string | null
           force_logout_reason: string | null
           id: string
+          ip_address: string | null
           is_active: boolean
           last_login_at: string
           last_seen_at: string
+          manufacturer: string | null
           model_name: string | null
           os_name: string | null
           os_version: string | null
           platform: string | null
+          push_enabled: boolean
+          push_token: string | null
           updated_at: string
           user_agent: string | null
           user_id: string
         }
         Insert: {
+          app_version?: string | null
           browser_name?: string | null
           browser_version?: string | null
+          country_code?: string | null
           created_at?: string
           device_id: string
           device_name: string
@@ -818,20 +1150,26 @@ export type Database = {
           force_logout_at?: string | null
           force_logout_reason?: string | null
           id?: string
+          ip_address?: string | null
           is_active?: boolean
           last_login_at?: string
           last_seen_at?: string
+          manufacturer?: string | null
           model_name?: string | null
           os_name?: string | null
           os_version?: string | null
           platform?: string | null
+          push_enabled?: boolean
+          push_token?: string | null
           updated_at?: string
           user_agent?: string | null
           user_id: string
         }
         Update: {
+          app_version?: string | null
           browser_name?: string | null
           browser_version?: string | null
+          country_code?: string | null
           created_at?: string
           device_id?: string
           device_name?: string
@@ -841,13 +1179,17 @@ export type Database = {
           force_logout_at?: string | null
           force_logout_reason?: string | null
           id?: string
+          ip_address?: string | null
           is_active?: boolean
           last_login_at?: string
           last_seen_at?: string
+          manufacturer?: string | null
           model_name?: string | null
           os_name?: string | null
           os_version?: string | null
           platform?: string | null
+          push_enabled?: boolean
+          push_token?: string | null
           updated_at?: string
           user_agent?: string | null
           user_id?: string
@@ -858,6 +1200,60 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_downloads: {
+        Row: {
+          bytes_total: number
+          content_id: string
+          created_at: string
+          episode_id: string | null
+          id: string
+          quality_label: string | null
+          source_type: string
+          source_url: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          bytes_total?: number
+          content_id: string
+          created_at?: string
+          episode_id?: string | null
+          id?: string
+          quality_label?: string | null
+          source_type?: string
+          source_url?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          bytes_total?: number
+          content_id?: string
+          created_at?: string
+          episode_id?: string | null
+          id?: string
+          quality_label?: string | null
+          source_type?: string
+          source_url?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_downloads_content_id_fkey"
+            columns: ["content_id"]
+            isOneToOne: false
+            referencedRelation: "contents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_downloads_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
             referencedColumns: ["id"]
           },
         ]
@@ -912,6 +1308,57 @@ export type Database = {
         }
         Relationships: []
       }
+      watch_events: {
+        Row: {
+          content_id: string
+          created_at: string
+          delta_watched_seconds: number
+          episode_id: string | null
+          id: string
+          is_playing: boolean
+          position_seconds: number
+          session_id: string | null
+          user_id: string
+        }
+        Insert: {
+          content_id: string
+          created_at?: string
+          delta_watched_seconds?: number
+          episode_id?: string | null
+          id?: string
+          is_playing?: boolean
+          position_seconds?: number
+          session_id?: string | null
+          user_id: string
+        }
+        Update: {
+          content_id?: string
+          created_at?: string
+          delta_watched_seconds?: number
+          episode_id?: string | null
+          id?: string
+          is_playing?: boolean
+          position_seconds?: number
+          session_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watch_events_content_id_fkey"
+            columns: ["content_id"]
+            isOneToOne: false
+            referencedRelation: "contents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "watch_events_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       watch_history: {
         Row: {
           completed: boolean
@@ -919,9 +1366,11 @@ export type Database = {
           created_at: string
           episode_id: string | null
           id: string
+          last_watched_at: string | null
           progress_seconds: number
           updated_at: string
           user_id: string
+          watched_seconds: number
         }
         Insert: {
           completed?: boolean
@@ -929,9 +1378,11 @@ export type Database = {
           created_at?: string
           episode_id?: string | null
           id?: string
+          last_watched_at?: string | null
           progress_seconds?: number
           updated_at?: string
           user_id: string
+          watched_seconds?: number
         }
         Update: {
           completed?: boolean
@@ -939,9 +1390,11 @@ export type Database = {
           created_at?: string
           episode_id?: string | null
           id?: string
+          last_watched_at?: string | null
           progress_seconds?: number
           updated_at?: string
           user_id?: string
+          watched_seconds?: number
         }
         Relationships: [
           {
@@ -1037,8 +1490,10 @@ export type Database = {
       get_effective_user_devices: {
         Args: { _user_id: string }
         Returns: {
+          app_version: string | null
           browser_name: string | null
           browser_version: string | null
+          country_code: string | null
           created_at: string
           device_id: string
           device_name: string
@@ -1048,13 +1503,17 @@ export type Database = {
           force_logout_at: string | null
           force_logout_reason: string | null
           id: string
+          ip_address: string | null
           is_active: boolean
           last_login_at: string
           last_seen_at: string
+          manufacturer: string | null
           model_name: string | null
           os_name: string | null
           os_version: string | null
           platform: string | null
+          push_enabled: boolean
+          push_token: string | null
           updated_at: string
           user_agent: string | null
           user_id: string
@@ -1076,8 +1535,10 @@ export type Database = {
       mark_user_device_inactive: {
         Args: { _device_id: string }
         Returns: {
+          app_version: string | null
           browser_name: string | null
           browser_version: string | null
+          country_code: string | null
           created_at: string
           device_id: string
           device_name: string
@@ -1087,13 +1548,17 @@ export type Database = {
           force_logout_at: string | null
           force_logout_reason: string | null
           id: string
+          ip_address: string | null
           is_active: boolean
           last_login_at: string
           last_seen_at: string
+          manufacturer: string | null
           model_name: string | null
           os_name: string | null
           os_version: string | null
           platform: string | null
+          push_enabled: boolean
+          push_token: string | null
           updated_at: string
           user_agent: string | null
           user_id: string
@@ -1159,8 +1624,10 @@ export type Database = {
           _user_agent?: string
         }
         Returns: {
+          app_version: string | null
           browser_name: string | null
           browser_version: string | null
+          country_code: string | null
           created_at: string
           device_id: string
           device_name: string
@@ -1170,13 +1637,17 @@ export type Database = {
           force_logout_at: string | null
           force_logout_reason: string | null
           id: string
+          ip_address: string | null
           is_active: boolean
           last_login_at: string
           last_seen_at: string
+          manufacturer: string | null
           model_name: string | null
           os_name: string | null
           os_version: string | null
           platform: string | null
+          push_enabled: boolean
+          push_token: string | null
           updated_at: string
           user_agent: string | null
           user_id: string
@@ -1203,8 +1674,10 @@ export type Database = {
           _user_agent?: string
         }
         Returns: {
+          app_version: string | null
           browser_name: string | null
           browser_version: string | null
+          country_code: string | null
           created_at: string
           device_id: string
           device_name: string
@@ -1214,13 +1687,17 @@ export type Database = {
           force_logout_at: string | null
           force_logout_reason: string | null
           id: string
+          ip_address: string | null
           is_active: boolean
           last_login_at: string
           last_seen_at: string
+          manufacturer: string | null
           model_name: string | null
           os_name: string | null
           os_version: string | null
           platform: string | null
+          push_enabled: boolean
+          push_token: string | null
           updated_at: string
           user_agent: string | null
           user_id: string
@@ -1245,7 +1722,18 @@ export type Database = {
       channel_status: "active" | "draft" | "hidden"
       content_status: "ongoing" | "completed" | "upcoming"
       content_type: "anime" | "serial" | "movie"
+      episode_status: "draft" | "scheduled" | "published" | "archived"
       publish_status: "draft" | "published" | "scheduled"
+      talent_gender: "male" | "female" | "mixed" | "unknown"
+      talent_quality_tier: "basic" | "standard" | "good" | "premium" | "elite"
+      talent_role_type:
+        | "actor"
+        | "voice_actor"
+        | "translator"
+        | "timing"
+        | "editor"
+        | "narrator"
+        | "other"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1377,7 +1865,19 @@ export const Constants = {
       channel_status: ["active", "draft", "hidden"],
       content_status: ["ongoing", "completed", "upcoming"],
       content_type: ["anime", "serial", "movie"],
+      episode_status: ["draft", "scheduled", "published", "archived"],
       publish_status: ["draft", "published", "scheduled"],
+      talent_gender: ["male", "female", "mixed", "unknown"],
+      talent_quality_tier: ["basic", "standard", "good", "premium", "elite"],
+      talent_role_type: [
+        "actor",
+        "voice_actor",
+        "translator",
+        "timing",
+        "editor",
+        "narrator",
+        "other",
+      ],
     },
   },
 } as const

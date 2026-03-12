@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { DataTable } from "@/components/admin/DataTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
+import { R2Upload } from "@/components/admin/R2Upload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,8 +27,8 @@ export default function BannersPage() {
   const [isActive, setIsActive] = useState(true);
   const [orderIndex, setOrderIndex] = useState(0);
 
-  const fetch = async () => { setLoading(true); const { data } = await supabase.from("banners").select("*").order("order_index"); setBanners(data || []); setLoading(false); };
-  useEffect(() => { fetch(); }, []);
+  const fetchData = async () => { setLoading(true); const { data } = await supabase.from("banners").select("*").order("order_index"); setBanners(data || []); setLoading(false); };
+  useEffect(() => { fetchData(); }, []);
 
   const openNew = () => { setEditing(null); setTitle(""); setSubtitle(""); setImageUrl(""); setButtonText("Ko'rish"); setIsActive(true); setOrderIndex(banners.length); setDialogOpen(true); };
   const openEdit = (b: Banner) => { setEditing(b); setTitle(b.title); setSubtitle(b.subtitle || ""); setImageUrl(b.image_url || ""); setButtonText(b.button_text || ""); setIsActive(b.is_active); setOrderIndex(b.order_index); setDialogOpen(true); };
@@ -42,19 +43,19 @@ export default function BannersPage() {
       const { error } = await supabase.from("banners").insert(payload);
       if (error) { toast.error(error.message); return; }
     }
-    toast.success("Saqlandi"); setDialogOpen(false); fetch();
+    toast.success("Saqlandi"); setDialogOpen(false); fetchData();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("O'chirmoqchimisiz?")) return;
     await supabase.from("banners").delete().eq("id", id);
-    toast.success("O'chirildi"); fetch();
+    toast.success("O'chirildi"); fetchData();
   };
 
   return (
     <div className="animate-fade-in">
       <PageHeader title="Bannerlar" subtitle={`${banners.length} ta banner`}
-        actions={<Button variant="gold" onClick={openNew}><Plus className="h-4 w-4" /> Yangi banner</Button>} />
+        actions={<Button className="bg-primary text-primary-foreground" onClick={openNew}><Plus className="h-4 w-4" /> Yangi banner</Button>} />
       <DataTable data={banners} loading={loading} columns={[
         { key: "title", header: "Sarlavha", render: (b) => (
           <div className="flex items-center gap-3">
@@ -77,13 +78,23 @@ export default function BannersPage() {
           <div className="space-y-4">
             <div className="space-y-2"><Label className="text-sm text-muted-foreground">Sarlavha</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} className="bg-background border-border" /></div>
             <div className="space-y-2"><Label className="text-sm text-muted-foreground">Taglavha</Label><Input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} className="bg-background border-border" /></div>
-            <div className="space-y-2"><Label className="text-sm text-muted-foreground">Rasm URL</Label><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="bg-background border-border" /></div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Banner rasmi</Label>
+              <R2Upload
+                folder="banners"
+                accept="image/*"
+                label="Banner rasm yuklash (jpg, png, webp)"
+                value={imageUrl}
+                maxSizeMB={10}
+                onUploadComplete={(url) => setImageUrl(url)}
+              />
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Tugma matni</Label><Input value={buttonText} onChange={(e) => setButtonText(e.target.value)} className="bg-background border-border" /></div>
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Tartib</Label><Input type="number" value={orderIndex} onChange={(e) => setOrderIndex(Number(e.target.value))} className="bg-background border-border" /></div>
             </div>
             <div className="flex items-center justify-between"><Label className="text-sm text-foreground">Faol</Label><Switch checked={isActive} onCheckedChange={setIsActive} /></div>
-            <Button variant="gold" className="w-full" onClick={handleSave}>Saqlash</Button>
+            <Button className="w-full bg-primary text-primary-foreground" onClick={handleSave}>Saqlash</Button>
           </div>
         </DialogContent>
       </Dialog>

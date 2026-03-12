@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { R2Upload } from "@/components/admin/R2Upload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,9 +48,7 @@ export default function ContentEditorPage() {
         supabase.from("contents").select("*").eq("id", id).single(),
         supabase.from("content_genres").select("genre_id").eq("content_id", id),
       ]).then(([contentRes, genresRes]) => {
-        if (contentRes.data) {
-          setForm(contentRes.data);
-        }
+        if (contentRes.data) setForm(contentRes.data);
         if (genresRes.data) setSelectedGenres(genresRes.data.map((g) => g.genre_id));
         setLoading(false);
       });
@@ -81,7 +80,6 @@ export default function ContentEditorPage() {
       } else {
         const { error } = await supabase.from("contents").update(form).eq("id", id!);
         if (error) throw error;
-        // Sync genres
         await supabase.from("content_genres").delete().eq("content_id", id!);
         if (selectedGenres.length > 0) {
           await supabase.from("content_genres").insert(selectedGenres.map((gid) => ({ content_id: id!, genre_id: gid })));
@@ -109,9 +107,9 @@ export default function ContentEditorPage() {
         title={isNew ? "Yangi kontent" : "Kontentni tahrirlash"}
         actions={
           <div className="flex gap-2">
-            <Button variant="ghost-muted" onClick={() => navigate("/admin/content")}><ArrowLeft className="h-4 w-4" /> Orqaga</Button>
+            <Button variant="ghost" onClick={() => navigate("/admin/content")} className="text-muted-foreground"><ArrowLeft className="h-4 w-4" /> Orqaga</Button>
             {!isNew && <Button variant="destructive" size="sm" onClick={handleDelete}><Trash2 className="h-4 w-4" /></Button>}
-            <Button variant="gold" onClick={handleSave} disabled={saving}><Save className="h-4 w-4" /> {saving ? "Saqlanmoqda..." : "Saqlash"}</Button>
+            <Button className="bg-primary text-primary-foreground" onClick={handleSave} disabled={saving}><Save className="h-4 w-4" /> {saving ? "Saqlanmoqda..." : "Saqlash"}</Button>
           </div>
         }
       />
@@ -121,29 +119,14 @@ export default function ContentEditorPage() {
         <section className="rounded-lg border border-border bg-card p-5 space-y-4">
           <h2 className="font-heading text-lg font-semibold text-foreground">Asosiy ma'lumotlar</h2>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Nomi *</Label>
-              <Input value={form.title || ""} onChange={(e) => updateField("title", e.target.value)} className="bg-background border-border" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Muqobil nomi</Label>
-              <Input value={form.alternative_title || ""} onChange={(e) => updateField("alternative_title", e.target.value)} className="bg-background border-border" />
-            </div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Nomi *</Label><Input value={form.title || ""} onChange={(e) => updateField("title", e.target.value)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Muqobil nomi</Label><Input value={form.alternative_title || ""} onChange={(e) => updateField("alternative_title", e.target.value)} className="bg-background border-border" /></div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Slug *</Label>
-              <Input value={form.slug || ""} onChange={(e) => updateField("slug", e.target.value)} className="bg-background border-border" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Subtitle</Label>
-              <Input value={form.subtitle || ""} onChange={(e) => updateField("subtitle", e.target.value)} className="bg-background border-border" />
-            </div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Slug *</Label><Input value={form.slug || ""} onChange={(e) => updateField("slug", e.target.value)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Subtitle</Label><Input value={form.subtitle || ""} onChange={(e) => updateField("subtitle", e.target.value)} className="bg-background border-border" /></div>
           </div>
-          <div className="space-y-2">
-            <Label className="text-muted-foreground text-sm">Tavsif</Label>
-            <Textarea value={form.description || ""} onChange={(e) => updateField("description", e.target.value)} rows={4} className="bg-background border-border" />
-          </div>
+          <div className="space-y-2"><Label className="text-muted-foreground text-sm">Tavsif</Label><Textarea value={form.description || ""} onChange={(e) => updateField("description", e.target.value)} rows={4} className="bg-background border-border" /></div>
         </section>
 
         {/* Classification */}
@@ -185,36 +168,15 @@ export default function ContentEditorPage() {
             </div>
           </div>
           <div className="grid grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Yil</Label>
-              <Input type="number" value={form.year || ""} onChange={(e) => updateField("year", Number(e.target.value) || null)} className="bg-background border-border" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Davomiylik (min)</Label>
-              <Input type="number" value={form.duration_minutes || ""} onChange={(e) => updateField("duration_minutes", Number(e.target.value) || null)} className="bg-background border-border" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Yosh chegarasi</Label>
-              <Input value={form.age_rating || ""} onChange={(e) => updateField("age_rating", e.target.value)} className="bg-background border-border" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Sifat</Label>
-              <Input value={form.quality_label || ""} onChange={(e) => updateField("quality_label", e.target.value)} placeholder="HD / FHD" className="bg-background border-border" />
-            </div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Yil</Label><Input type="number" value={form.year || ""} onChange={(e) => updateField("year", Number(e.target.value) || null)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Davomiylik (min)</Label><Input type="number" value={form.duration_minutes || ""} onChange={(e) => updateField("duration_minutes", Number(e.target.value) || null)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Yosh chegarasi</Label><Input value={form.age_rating || ""} onChange={(e) => updateField("age_rating", e.target.value)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Sifat</Label><Input value={form.quality_label || ""} onChange={(e) => updateField("quality_label", e.target.value)} placeholder="HD / FHD" className="bg-background border-border" /></div>
           </div>
           <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Mamlakat</Label>
-              <Input value={form.country || ""} onChange={(e) => updateField("country", e.target.value)} className="bg-background border-border" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Studiya</Label>
-              <Input value={form.studio || ""} onChange={(e) => updateField("studio", e.target.value)} className="bg-background border-border" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">IMDB reytingi</Label>
-              <Input type="number" step="0.1" value={form.imdb_rating || ""} onChange={(e) => updateField("imdb_rating", Number(e.target.value) || null)} className="bg-background border-border" />
-            </div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Mamlakat</Label><Input value={form.country || ""} onChange={(e) => updateField("country", e.target.value)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Studiya</Label><Input value={form.studio || ""} onChange={(e) => updateField("studio", e.target.value)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">IMDB reytingi</Label><Input type="number" step="0.1" value={form.imdb_rating || ""} onChange={(e) => updateField("imdb_rating", Number(e.target.value) || null)} className="bg-background border-border" /></div>
           </div>
         </section>
 
@@ -225,9 +187,7 @@ export default function ContentEditorPage() {
             {genres.map((g) => {
               const selected = selectedGenres.includes(g.id);
               return (
-                <button key={g.id} onClick={() => setSelectedGenres(
-                  selected ? selectedGenres.filter((id) => id !== g.id) : [...selectedGenres, g.id]
-                )}
+                <button key={g.id} onClick={() => setSelectedGenres(selected ? selectedGenres.filter((gid) => gid !== g.id) : [...selectedGenres, g.id])}
                   className={`rounded-md px-3 py-1.5 text-sm font-heading font-medium transition-colors ${
                     selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
                   }`}
@@ -239,25 +199,53 @@ export default function ContentEditorPage() {
           </div>
         </section>
 
-        {/* Media URLs */}
+        {/* Media - R2 Uploads */}
         <section className="rounded-lg border border-border bg-card p-5 space-y-4">
-          <h2 className="font-heading text-lg font-semibold text-foreground">Media</h2>
+          <h2 className="font-heading text-lg font-semibold text-foreground">Media fayllar</h2>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Poster URL</Label>
-              <Input value={form.poster_url || ""} onChange={(e) => updateField("poster_url", e.target.value)} className="bg-background border-border" />
+              <Label className="text-muted-foreground text-sm">Poster rasm</Label>
+              <R2Upload
+                folder="covers"
+                accept="image/*"
+                label="Poster yuklash (jpg, png, webp)"
+                value={form.poster_url || ""}
+                maxSizeMB={10}
+                onUploadComplete={(url) => updateField("poster_url", url)}
+              />
             </div>
             <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Banner URL</Label>
-              <Input value={form.banner_url || ""} onChange={(e) => updateField("banner_url", e.target.value)} className="bg-background border-border" />
+              <Label className="text-muted-foreground text-sm">Banner rasm</Label>
+              <R2Upload
+                folder="banners"
+                accept="image/*"
+                label="Banner yuklash (jpg, png, webp)"
+                value={form.banner_url || ""}
+                maxSizeMB={10}
+                onUploadComplete={(url) => updateField("banner_url", url)}
+              />
             </div>
             <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Thumbnail URL</Label>
-              <Input value={form.thumbnail_url || ""} onChange={(e) => updateField("thumbnail_url", e.target.value)} className="bg-background border-border" />
+              <Label className="text-muted-foreground text-sm">Thumbnail rasm</Label>
+              <R2Upload
+                folder="thumbnails"
+                accept="image/*"
+                label="Thumbnail yuklash (jpg, png, webp)"
+                value={form.thumbnail_url || ""}
+                maxSizeMB={10}
+                onUploadComplete={(url) => updateField("thumbnail_url", url)}
+              />
             </div>
             <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Treyler URL</Label>
-              <Input value={form.trailer_url || ""} onChange={(e) => updateField("trailer_url", e.target.value)} className="bg-background border-border" />
+              <Label className="text-muted-foreground text-sm">Treyler video</Label>
+              <R2Upload
+                folder="trailers"
+                accept="video/*"
+                label="Treyler yuklash (mp4, webm)"
+                value={form.trailer_url || ""}
+                maxSizeMB={200}
+                onUploadComplete={(url) => updateField("trailer_url", url)}
+              />
             </div>
           </div>
         </section>
@@ -280,14 +268,8 @@ export default function ContentEditorPage() {
             ))}
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Jami fasllar</Label>
-              <Input type="number" value={form.total_seasons || ""} onChange={(e) => updateField("total_seasons", Number(e.target.value) || null)} className="bg-background border-border" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Jami epizodlar</Label>
-              <Input type="number" value={form.total_episodes || ""} onChange={(e) => updateField("total_episodes", Number(e.target.value) || null)} className="bg-background border-border" />
-            </div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Jami fasllar</Label><Input type="number" value={form.total_seasons || ""} onChange={(e) => updateField("total_seasons", Number(e.target.value) || null)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Jami epizodlar</Label><Input type="number" value={form.total_episodes || ""} onChange={(e) => updateField("total_episodes", Number(e.target.value) || null)} className="bg-background border-border" /></div>
           </div>
         </section>
       </div>

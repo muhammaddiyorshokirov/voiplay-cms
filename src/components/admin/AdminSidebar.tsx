@@ -1,6 +1,7 @@
 import {
-  LayoutDashboard, Film, Tv, Clapperboard, FolderOpen, ListVideo,
-  Tags, Bell, ShieldCheck, Users, Settings, LogOut, Layers, Upload, ScrollText, ChevronDown
+  LayoutDashboard, Film, Tv, Clapperboard, ListVideo,
+  Tags, Bell, ShieldCheck, Users, Settings, LogOut, Layers,
+  ScrollText, ChevronDown, MessageSquare, Crown, CreditCard
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -13,7 +14,6 @@ interface NavItem {
   url: string;
   icon: React.ElementType;
   children?: { title: string; url: string }[];
-  adminOnly?: boolean;
 }
 
 const navItems: NavItem[] = [
@@ -33,17 +33,20 @@ const navItems: NavItem[] = [
   { title: "Fasllar", url: "/admin/seasons", icon: Layers },
   { title: "Epizodlar", url: "/admin/episodes", icon: ListVideo },
   { title: "Janrlar", url: "/admin/genres", icon: Tags },
-  { title: "Bannerlar", url: "/admin/banners", icon: Upload },
+  { title: "Bannerlar", url: "/admin/banners", icon: Tv },
+  { title: "Izohlar", url: "/admin/comments", icon: MessageSquare },
   { title: "Bildirishnomalar", url: "/admin/notifications", icon: Bell },
   { title: "Tekshiruv navbati", url: "/admin/review", icon: ShieldCheck },
-  { title: "Foydalanuvchilar", url: "/admin/users", icon: Users, adminOnly: true },
-  { title: "Audit loglari", url: "/admin/audit", icon: ScrollText, adminOnly: true },
-  { title: "Sozlamalar", url: "/admin/settings", icon: Settings, adminOnly: true },
+  { title: "Premium rejalar", url: "/admin/premium-plans", icon: Crown },
+  { title: "Obunalar", url: "/admin/subscriptions", icon: CreditCard },
+  { title: "Foydalanuvchilar", url: "/admin/users", icon: Users },
+  { title: "Audit loglari", url: "/admin/audit", icon: ScrollText },
+  { title: "Sozlamalar", url: "/admin/settings", icon: Settings },
 ];
 
 export function AdminSidebar() {
   const location = useLocation();
-  const { profile, isAdmin, signOut } = useAuth();
+  const { profile, signOut } = useAuth();
   const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   const isActive = (url: string) => {
@@ -51,21 +54,17 @@ export function AdminSidebar() {
     return location.pathname.startsWith(url.split("?")[0]);
   };
 
-  const filteredItems = navItems.filter((item) => !item.adminOnly || isAdmin);
-
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-60 flex-col border-r border-border bg-sidebar">
-      {/* Logo */}
       <div className="flex h-16 items-center gap-2 border-b border-border px-5">
         <Tv className="h-7 w-7 text-primary" />
         <span className="font-heading text-lg font-bold text-foreground">VoiPlay</span>
-        <span className="ml-0.5 text-xs font-medium text-muted-foreground">TV</span>
+        <span className="ml-0.5 text-xs font-medium text-muted-foreground">Admin</span>
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-4 px-3">
         <ul className="space-y-1">
-          {filteredItems.map((item) => {
+          {navItems.map((item) => {
             const active = isActive(item.url);
             const hasChildren = item.children && item.children.length > 0;
             const groupOpen = openGroup === item.title || active;
@@ -124,14 +123,14 @@ export function AdminSidebar() {
         </ul>
       </nav>
 
-      {/* User */}
       <div className="border-t border-border p-4">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-xs font-heading font-semibold text-foreground">
-            {profile?.full_name?.[0]?.toUpperCase() || "U"}
+            {profile?.full_name?.[0]?.toUpperCase() || "A"}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="truncate text-sm font-medium text-foreground">{profile?.full_name || "Foydalanuvchi"}</p>
+            <p className="truncate text-sm font-medium text-foreground">{profile?.full_name || "Admin"}</p>
+            <p className="text-xs text-muted-foreground">Administrator</p>
           </div>
           <button onClick={signOut} className="text-muted-foreground hover:text-destructive transition-colors">
             <LogOut className="h-4 w-4" />
