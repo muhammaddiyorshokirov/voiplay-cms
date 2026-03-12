@@ -179,7 +179,7 @@ export default function CMRequestsPage() {
       payload.title = ct ? `${ct.title} — ${form.season_number}-fasl` : `${form.season_number}-fasl`;
     }
 
-    const { error } = await supabase.from("content_requests").insert(payload);
+    const { error } = await supabase.from("content_requests" as any).insert(payload as any);
 
     if (error) {
       toast.error("Xatolik: " + error.message);
