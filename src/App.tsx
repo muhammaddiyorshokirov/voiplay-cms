@@ -27,6 +27,7 @@ import CMDashboardPage from "@/pages/cm/CMDashboardPage";
 import CMContentPage from "@/pages/cm/CMContentPage";
 import CMEpisodesPage from "@/pages/cm/CMEpisodesPage";
 import CMChannelPage from "@/pages/cm/CMChannelPage";
+import CMRequestsPage from "@/pages/cm/CMRequestsPage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -103,6 +104,7 @@ const App = () => (
               <Route path="content" element={<CMContentPage />} />
               <Route path="episodes" element={<CMEpisodesPage />} />
               <Route path="channel" element={<CMChannelPage />} />
+              <Route path="requests" element={<CMRequestsPage />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

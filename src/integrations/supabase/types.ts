@@ -397,6 +397,120 @@ export type Database = {
           },
         ]
       }
+      content_requests: {
+        Row: {
+          admin_notes: string | null
+          age_rating: string | null
+          alternative_title: string | null
+          banner_url: string | null
+          channel_id: string
+          content_id: string | null
+          content_type: Database["public"]["Enums"]["content_type"] | null
+          country: string | null
+          created_at: string
+          description: string | null
+          has_dub: boolean | null
+          has_subtitle: boolean | null
+          id: string
+          poster_url: string | null
+          request_type: Database["public"]["Enums"]["content_request_type"]
+          requested_by: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          season_description: string | null
+          season_number: number | null
+          season_title: string | null
+          status: Database["public"]["Enums"]["content_request_status"]
+          studio: string | null
+          thumbnail_url: string | null
+          title: string | null
+          total_episodes: number | null
+          total_seasons: number | null
+          trailer_url: string | null
+          updated_at: string
+          year: number | null
+        }
+        Insert: {
+          admin_notes?: string | null
+          age_rating?: string | null
+          alternative_title?: string | null
+          banner_url?: string | null
+          channel_id: string
+          content_id?: string | null
+          content_type?: Database["public"]["Enums"]["content_type"] | null
+          country?: string | null
+          created_at?: string
+          description?: string | null
+          has_dub?: boolean | null
+          has_subtitle?: boolean | null
+          id?: string
+          poster_url?: string | null
+          request_type?: Database["public"]["Enums"]["content_request_type"]
+          requested_by: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          season_description?: string | null
+          season_number?: number | null
+          season_title?: string | null
+          status?: Database["public"]["Enums"]["content_request_status"]
+          studio?: string | null
+          thumbnail_url?: string | null
+          title?: string | null
+          total_episodes?: number | null
+          total_seasons?: number | null
+          trailer_url?: string | null
+          updated_at?: string
+          year?: number | null
+        }
+        Update: {
+          admin_notes?: string | null
+          age_rating?: string | null
+          alternative_title?: string | null
+          banner_url?: string | null
+          channel_id?: string
+          content_id?: string | null
+          content_type?: Database["public"]["Enums"]["content_type"] | null
+          country?: string | null
+          created_at?: string
+          description?: string | null
+          has_dub?: boolean | null
+          has_subtitle?: boolean | null
+          id?: string
+          poster_url?: string | null
+          request_type?: Database["public"]["Enums"]["content_request_type"]
+          requested_by?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          season_description?: string | null
+          season_number?: number | null
+          season_title?: string | null
+          status?: Database["public"]["Enums"]["content_request_status"]
+          studio?: string | null
+          thumbnail_url?: string | null
+          title?: string | null
+          total_episodes?: number | null
+          total_seasons?: number | null
+          trailer_url?: string | null
+          updated_at?: string
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_requests_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "content_maker_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_requests_content_id_fkey"
+            columns: ["content_id"]
+            isOneToOne: false
+            referencedRelation: "contents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       content_views: {
         Row: {
           content_id: string
@@ -1720,6 +1834,8 @@ export type Database = {
     Enums: {
       app_role: "admin" | "user" | "content_maker"
       channel_status: "active" | "draft" | "hidden"
+      content_request_status: "pending" | "approved" | "rejected"
+      content_request_type: "content" | "season"
       content_status: "ongoing" | "completed" | "upcoming"
       content_type: "anime" | "serial" | "movie"
       episode_status: "draft" | "scheduled" | "published" | "archived"
@@ -1863,6 +1979,8 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "user", "content_maker"],
       channel_status: ["active", "draft", "hidden"],
+      content_request_status: ["pending", "approved", "rejected"],
+      content_request_type: ["content", "season"],
       content_status: ["ongoing", "completed", "upcoming"],
       content_type: ["anime", "serial", "movie"],
       episode_status: ["draft", "scheduled", "published", "archived"],
