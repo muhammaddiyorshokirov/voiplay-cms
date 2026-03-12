@@ -47,7 +47,7 @@ export default function ReviewQueuePage() {
     const [contentsRes, episodesRes, requestsRes] = await Promise.all([
       supabase.from("contents").select("*").eq("publish_status", "draft").is("deleted_at", null).order("created_at", { ascending: false }),
       supabase.from("episodes").select("*, contents(title), seasons(season_number)").eq("is_published", false).order("created_at", { ascending: false }).limit(100),
-      supabase.from("content_requests").select("*, content_maker_channels(channel_name)").eq("status", "pending").order("created_at", { ascending: false }),
+      supabase.from("content_requests" as any).select("*, content_maker_channels(channel_name)").eq("status", "pending").order("created_at", { ascending: false }),
     ]);
     setDraftContents(contentsRes.data || []);
     setUnpublishedEpisodes((episodesRes.data || []) as Episode[]);
