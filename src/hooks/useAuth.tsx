@@ -30,9 +30,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const initialized = useRef(false);
   const fetchingRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+
+  const clearUserData = useCallback(() => {
+    setUser(null);
+    setSession(null);
+    setProfile(null);
+    setRoles([]);
+  }, []);
 
   const fetchUserData = useCallback(async (userId: string) => {
-    // Prevent duplicate concurrent fetches for same user
     if (fetchingRef.current === userId) return;
     fetchingRef.current = userId;
     try {
@@ -40,42 +47,80 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         supabase.from("profiles").select("full_name, avatar_url, username").eq("id", userId).single(),
         supabase.from("user_roles").select("role").eq("user_id", userId),
       ]);
+      if (!mountedRef.current) return;
       if (profileRes.data) setProfile(profileRes.data);
       if (rolesRes.data) setRoles(rolesRes.data.map((r) => r.role));
+    } catch {
+      // Silently handle - user data will be empty
     } finally {
       fetchingRef.current = null;
     }
   }, []);
 
   useEffect(() => {
-    // Get initial session first
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchUserData(session.user.id);
-      }
-      setLoading(false);
-      initialized.current = true;
-    });
+    mountedRef.current = true;
 
-    // Then listen for changes (skip initial event to prevent double-fire)
+    // Set up listener FIRST (before getSession) per Supabase best practices
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (!initialized.current) return;
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          fetchUserData(session.user.id);
+      (event, newSession) => {
+        if (!mountedRef.current) return;
+        
+        // Handle sign out explicitly
+        if (event === 'SIGNED_OUT') {
+          clearUserData();
+          setLoading(false);
+          return;
+        }
+        
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
+
+        if (newSession?.user) {
+          // Use setTimeout to avoid Supabase deadlock
+          setTimeout(() => {
+            if (mountedRef.current) {
+              fetchUserData(newSession.user.id);
+            }
+          }, 0);
         } else {
           setProfile(null);
           setRoles([]);
         }
+        
+        if (!initialized.current) {
+          initialized.current = true;
+          setLoading(false);
+        }
       }
     );
 
-    return () => subscription.unsubscribe();
-  }, [fetchUserData]);
+    // Then get initial session
+    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+      if (!mountedRef.current) return;
+      
+      if (existingSession?.user) {
+        setSession(existingSession);
+        setUser(existingSession.user);
+        fetchUserData(existingSession.user.id).then(() => {
+          if (mountedRef.current && !initialized.current) {
+            initialized.current = true;
+            setLoading(false);
+          }
+        });
+      } else {
+        // No session - just mark as loaded
+        if (!initialized.current) {
+          initialized.current = true;
+          setLoading(false);
+        }
+      }
+    });
+
+    return () => {
+      mountedRef.current = false;
+      subscription.unsubscribe();
+    };
+  }, [fetchUserData, clearUserData]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -83,10 +128,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    setProfile(null);
-    setRoles([]);
+    clearUserData();
     await supabase.auth.signOut();
-  }, []);
+  }, [clearUserData]);
 
   const isAdmin = roles.includes("admin");
   const isContentMaker = roles.includes("content_maker");
@@ -102,4 +146,11 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
+}
+
+/** Returns the dashboard path based on user roles */
+export function getDashboardPath(roles: AppRole[]): string {
+  if (roles.includes("admin")) return "/admin";
+  if (roles.includes("content_maker")) return "/cm";
+  return "/unauthorized";
 }
