@@ -80,7 +80,7 @@ export default function ReviewQueuePage() {
   const confirmReject = async () => {
     if (!rejectTarget) return;
     if (rejectTarget.type === "request") {
-      const { error } = await supabase.from("content_requests").update({
+      const { error } = await supabase.from("content_requests" as any).update({
         status: "rejected",
         admin_notes: rejectReason.trim().slice(0, 2000) || null,
         reviewed_by: user?.id,
