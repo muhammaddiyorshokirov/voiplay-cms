@@ -72,7 +72,7 @@ export default function CMRequestsPage() {
 
     const [reqRes, chRes] = await Promise.all([
       supabase
-        .from("content_requests")
+        .from("content_requests" as any)
         .select("*")
         .eq("requested_by", user.id)
         .order("created_at", { ascending: false }),

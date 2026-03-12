@@ -104,6 +104,7 @@ const App = () => (
               <Route path="content" element={<CMContentPage />} />
               <Route path="episodes" element={<CMEpisodesPage />} />
               <Route path="channel" element={<CMChannelPage />} />
+              <Route path="requests" element={<CMRequestsPage />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />
