@@ -14,6 +14,14 @@ import type { Tables } from "@/integrations/supabase/types";
 
 type Notification = Tables<"notifications">;
 
+const targetLabels: Record<string, string> = {
+  all: "Barchaga",
+  admin: "Faqat adminlar",
+  content_maker: "Faqat kontent yaratuvchilar",
+  user: "Faqat foydalanuvchilar",
+  premium: "Premium foydalanuvchilar",
+};
+
 export default function NotificationsPage() {
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,11 +59,11 @@ export default function NotificationsPage() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Bildirishnomalar" subtitle={`${items.length} ta bildirishnoma`}
-        actions={<Button variant="gold" onClick={openNew}><Plus className="h-4 w-4" /> Yangi bildirishnoma</Button>} />
+        actions={<Button className="bg-primary text-primary-foreground" onClick={openNew}><Plus className="h-4 w-4" /> Yangi bildirishnoma</Button>} />
       <DataTable data={items} loading={loading} columns={[
         { key: "title", header: "Sarlavha", render: (n) => <span className="font-medium text-foreground">{n.title}</span> },
         { key: "body", header: "Matn", render: (n) => <span className="text-sm text-muted-foreground truncate max-w-[300px] block">{n.body || "—"}</span> },
-        { key: "target_type", header: "Maqsad", render: (n) => <span className="text-sm text-muted-foreground">{n.target_type || "Barchaga"}</span> },
+        { key: "target_type", header: "Maqsad", render: (n) => <span className="text-sm text-muted-foreground">{targetLabels[n.target_type || "all"] || n.target_type}</span> },
         { key: "created_at", header: "Yaratilgan", render: (n) => <span className="text-sm text-muted-foreground">{new Date(n.created_at).toLocaleDateString("uz")}</span> },
         { key: "actions", header: "", className: "w-24", render: (n) => (
           <div className="flex gap-1">
@@ -76,12 +84,14 @@ export default function NotificationsPage() {
                 <SelectTrigger className="bg-background border-border"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-card border-border">
                   <SelectItem value="all">Barchaga</SelectItem>
+                  <SelectItem value="admin">Faqat adminlar</SelectItem>
+                  <SelectItem value="content_maker">Faqat kontent yaratuvchilar</SelectItem>
+                  <SelectItem value="user">Faqat foydalanuvchilar</SelectItem>
                   <SelectItem value="premium">Premium foydalanuvchilar</SelectItem>
-                  <SelectItem value="admin">Adminlar</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <Button variant="gold" className="w-full" onClick={handleSave}>Saqlash</Button>
+            <Button className="w-full bg-primary text-primary-foreground" onClick={handleSave}>Saqlash</Button>
           </div>
         </DialogContent>
       </Dialog>
