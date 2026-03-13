@@ -129,7 +129,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     clearUserData();
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      if (typeof window !== "undefined") {
+        window.location.replace("/");
+      }
+    }
   }, [clearUserData]);
 
   const isAdmin = roles.includes("admin");

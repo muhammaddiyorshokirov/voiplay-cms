@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { formatErrorMessage } from "@/lib/errorMessage";
+import { createUploadProgressDetails, type UploadProgressDetails } from "@/lib/uploadProgress";
 
 export interface R2UploadResult {
   success: boolean;
@@ -18,6 +19,7 @@ interface UploadFileToR2Input {
   folder: string;
   metadata?: Record<string, string | number | boolean | null | undefined>;
   onProgress?: (progress: number) => void;
+  onProgressDetails?: (details: UploadProgressDetails) => void;
 }
 
 const ZIP_MIME_TYPES = new Set([
@@ -37,6 +39,7 @@ export async function uploadFileToR2({
   folder,
   metadata,
   onProgress,
+  onProgressDetails,
 }: UploadFileToR2Input) {
   const {
     data: { session },
@@ -63,7 +66,9 @@ export async function uploadFileToR2({
 
     xhr.upload.onprogress = (event) => {
       if (!event.lengthComputable) return;
-      onProgress?.(Math.min(Math.round((event.loaded / event.total) * 100), 100));
+      const details = createUploadProgressDetails(event.loaded, event.total);
+      onProgress?.(details.percent);
+      onProgressDetails?.(details);
     };
 
     xhr.onerror = () => {
@@ -82,7 +87,9 @@ export async function uploadFileToR2({
         })();
 
       if (xhr.status >= 200 && xhr.status < 300) {
+        const details = createUploadProgressDetails(file.size, file.size);
         onProgress?.(100);
+        onProgressDetails?.(details);
         resolve(payload as R2UploadResult);
         return;
       }

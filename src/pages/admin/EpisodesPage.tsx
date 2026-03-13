@@ -29,11 +29,13 @@ import {
 import { syncStorageAssetsByUrls } from "@/lib/storageAssets";
 import { formatErrorMessage } from "@/lib/errorMessage";
 import { isZipFile, uploadFileToR2 } from "@/lib/r2Upload";
+import { combineUploadProgress } from "@/lib/uploadProgress";
 import {
   fetchAdminContentOptions,
   getProfileDisplayName,
   type AdminContentOption,
 } from "@/lib/adminLookups";
+import { useUploadTracker } from "@/hooks/useUploadTracker";
 
 type Episode = Tables<"episodes"> & {
   contents?: { title: string } | null;
@@ -71,6 +73,14 @@ export default function EpisodesPage() {
     defaultVideoProcessingSettings,
   );
   const terminalStatusRef = useRef<string | null>(null);
+  const {
+    startTask,
+    updateTask,
+    updateTaskProgress: trackTaskProgress,
+    markTaskProcessing,
+    completeTask,
+    failTask,
+  } = useUploadTracker();
 
   const [form, setForm] = useState<Partial<TablesInsert<"episodes">>>({
     content_id: "",
@@ -169,6 +179,11 @@ export default function EpisodesPage() {
             toast.success("HLS tayyor bo'ldi");
             setVideoFile(null);
             setSubtitleFile(null);
+            setMediaJob(null);
+            setMediaSubmitting(false);
+            setUploadProgress(null);
+            setUploadStatus(null);
+            setDialogOpen(false);
             void fetchAll();
           } else {
             toast.error(response.job.failure_reason || response.job.cancel_reason || "Media job to'xtadi");
@@ -303,6 +318,9 @@ export default function EpisodesPage() {
       Boolean(videoFile) && !zipVideoUpload && videoProcessing.hls_enabled;
     const shouldUploadDirectVideo =
       Boolean(videoFile) && !zipVideoUpload && !videoProcessing.hls_enabled;
+    const totalUploadBytes =
+      (videoFile?.size || 0) + (subtitleFile?.size || 0);
+    let uploadTaskId: string | null = null;
 
     try {
       let episodeId = editing?.id || null;
@@ -326,10 +344,26 @@ export default function EpisodesPage() {
         episodeId = data.id;
         }
 
+      if (videoFile) {
+        uploadTaskId = startTask({
+          title: `${selectedContent.title || "Kontent"} · ${Number(payload.episode_number)}-qism`,
+          phase: shouldUploadZipHls
+            ? "HLS ZIP yuklanmoqda"
+            : shouldQueueMedia
+              ? "Media service'ga yuborilmoqda"
+              : "Video R2 ga yuklanmoqda",
+          totalBytes: totalUploadBytes || videoFile.size,
+          redirectTo: "/admin/episodes",
+        });
+      }
+
       if (shouldUploadZipHls && episodeId) {
         setMediaSubmitting(true);
         setUploadStatus("HLS ZIP R2 ga yuklanmoqda");
         setUploadProgress(0);
+        if (uploadTaskId) {
+          updateTask(uploadTaskId, { phase: "HLS ZIP R2 ga yuklanmoqda" });
+        }
 
         const uploadResult = await uploadFileToR2({
           file: videoFile as File,
@@ -347,7 +381,15 @@ export default function EpisodesPage() {
             sourceTable: "episodes",
             sourceColumn: "video_url",
           },
-          onProgress: (value) => setUploadProgress(value),
+          onProgressDetails: (details) => {
+            const combined = combineUploadProgress(details, totalUploadBytes);
+            setUploadProgress(combined.percent);
+            if (uploadTaskId) {
+              trackTaskProgress(uploadTaskId, combined, {
+                phase: "HLS ZIP R2 ga yuklanmoqda",
+              });
+            }
+          },
         });
 
         nextVideoUrl = uploadResult.stream_url || uploadResult.url;
@@ -359,6 +401,11 @@ export default function EpisodesPage() {
         setMediaSubmitting(true);
         setUploadStatus("Video R2 ga to'g'ridan-to'g'ri yuklanmoqda");
         setUploadProgress(0);
+        if (uploadTaskId) {
+          updateTask(uploadTaskId, {
+            phase: "Video R2 ga to'g'ridan-to'g'ri yuklanmoqda",
+          });
+        }
 
         const uploadResult = await uploadFileToR2({
           file: videoFile as File,
@@ -376,7 +423,15 @@ export default function EpisodesPage() {
             sourceTable: "episodes",
             sourceColumn: "video_url",
           },
-          onProgress: (value) => setUploadProgress(value),
+          onProgressDetails: (details) => {
+            const combined = combineUploadProgress(details, totalUploadBytes);
+            setUploadProgress(combined.percent);
+            if (uploadTaskId) {
+              trackTaskProgress(uploadTaskId, combined, {
+                phase: "Video R2 ga to'g'ridan-to'g'ri yuklanmoqda",
+              });
+            }
+          },
         });
 
         nextVideoUrl = uploadResult.url;
@@ -387,6 +442,9 @@ export default function EpisodesPage() {
       if ((shouldUploadZipHls || shouldUploadDirectVideo) && subtitleFile && episodeId) {
         setUploadStatus("Subtitle R2 ga yuklanmoqda");
         setUploadProgress(0);
+        if (uploadTaskId) {
+          updateTask(uploadTaskId, { phase: "Subtitle R2 ga yuklanmoqda" });
+        }
 
         const subtitleResult = await uploadFileToR2({
           file: subtitleFile,
@@ -404,7 +462,19 @@ export default function EpisodesPage() {
             sourceTable: "episodes",
             sourceColumn: "subtitle_url",
           },
-          onProgress: (value) => setUploadProgress(value),
+          onProgressDetails: (details) => {
+            const combined = combineUploadProgress(
+              details,
+              totalUploadBytes,
+              videoFile?.size || 0,
+            );
+            setUploadProgress(combined.percent);
+            if (uploadTaskId) {
+              trackTaskProgress(uploadTaskId, combined, {
+                phase: "Subtitle R2 ga yuklanmoqda",
+              });
+            }
+          },
         });
 
         nextSubtitleUrl = subtitleResult.url;
@@ -454,6 +524,11 @@ export default function EpisodesPage() {
         setMediaSubmitting(true);
         setUploadStatus("Video media service'ga yuborilmoqda");
         setUploadProgress(0);
+        if (uploadTaskId) {
+          updateTask(uploadTaskId, {
+            phase: "Video media service'ga yuborilmoqda",
+          });
+        }
         const response = await createMediaJob({
           episodeId,
           contentId: payload.content_id as string,
@@ -462,10 +537,22 @@ export default function EpisodesPage() {
           videoFile: videoFile as File,
           subtitleFile,
           onUploadProgress: (value) => setUploadProgress(value),
+          onUploadProgressDetails: (details) => {
+            const combined = combineUploadProgress(details, totalUploadBytes);
+            setUploadProgress(combined.percent);
+            if (uploadTaskId) {
+              trackTaskProgress(uploadTaskId, combined, {
+                phase: "Video media service'ga yuborilmoqda",
+              });
+            }
+          },
         });
 
         setMediaJob(response.job);
         terminalStatusRef.current = response.job.status;
+        if (uploadTaskId) {
+          markTaskProcessing(uploadTaskId, response.job);
+        }
         setMediaSubmitting(false);
         setUploadProgress(null);
         setUploadStatus(null);
@@ -477,6 +564,11 @@ export default function EpisodesPage() {
       setMediaSubmitting(false);
       setUploadProgress(null);
       setUploadStatus(null);
+      if (uploadTaskId) {
+        completeTask(uploadTaskId, {
+          phase: shouldUploadZipHls ? "HLS yuklandi" : "Upload yakunlandi",
+        });
+      }
       toast.success("Epizod saqlandi");
       setDialogOpen(false);
       resetMediaState();
@@ -485,6 +577,9 @@ export default function EpisodesPage() {
       setMediaSubmitting(false);
       setUploadProgress(null);
       setUploadStatus(null);
+      if (uploadTaskId) {
+        failTask(uploadTaskId, error);
+      }
       toast.error(formatErrorMessage(error, "Epizodni saqlashda xatolik yuz berdi"));
     }
   };

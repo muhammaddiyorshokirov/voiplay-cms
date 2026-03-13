@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth, getDashboardPath } from "@/hooks/useAuth";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { CMLayout } from "@/components/cm/CMLayout";
+import { UploadTrackerProvider } from "@/components/uploads/UploadTrackerProvider";
 import LoginPage from "@/pages/LoginPage";
 import UnauthorizedPage from "@/pages/UnauthorizedPage";
 import DashboardPage from "@/pages/admin/DashboardPage";
@@ -74,43 +75,45 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/unauthorized" element={<UnauthorizedPage />} />
-            <Route path="/" element={<HomeRedirect />} />
+          <UploadTrackerProvider>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/unauthorized" element={<UnauthorizedPage />} />
+              <Route path="/" element={<HomeRedirect />} />
 
-            <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
-              <Route index element={<DashboardPage />} />
-              <Route path="content" element={<ContentListPage />} />
-              <Route path="content/:id" element={<ContentEditorPage />} />
-              <Route path="genres" element={<GenresPage />} />
-              <Route path="seasons" element={<SeasonsPage />} />
-              <Route path="episodes" element={<EpisodesPage />} />
-              <Route path="banners" element={<BannersPage />} />
-              <Route path="notifications" element={<NotificationsPage />} />
-              <Route path="users" element={<UsersPage />} />
-              <Route path="review" element={<ReviewQueuePage />} />
-              <Route path="audit" element={<AuditLogsPage />} />
-              <Route path="settings" element={<SettingsPage />} />
-              <Route path="comments" element={<CommentsPage />} />
-              <Route path="premium-plans" element={<PremiumPlansPage />} />
-              <Route path="subscriptions" element={<SubscriptionsPage />} />
-              <Route path="channels" element={<ChannelsPage />} />
-              <Route path="storage" element={<StoragePage />} />
-              <Route path="media-queue" element={<MediaQueuePage />} />
-            </Route>
+              <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
+                <Route index element={<DashboardPage />} />
+                <Route path="content" element={<ContentListPage />} />
+                <Route path="content/:id" element={<ContentEditorPage />} />
+                <Route path="genres" element={<GenresPage />} />
+                <Route path="seasons" element={<SeasonsPage />} />
+                <Route path="episodes" element={<EpisodesPage />} />
+                <Route path="banners" element={<BannersPage />} />
+                <Route path="notifications" element={<NotificationsPage />} />
+                <Route path="users" element={<UsersPage />} />
+                <Route path="review" element={<ReviewQueuePage />} />
+                <Route path="audit" element={<AuditLogsPage />} />
+                <Route path="settings" element={<SettingsPage />} />
+                <Route path="comments" element={<CommentsPage />} />
+                <Route path="premium-plans" element={<PremiumPlansPage />} />
+                <Route path="subscriptions" element={<SubscriptionsPage />} />
+                <Route path="channels" element={<ChannelsPage />} />
+                <Route path="storage" element={<StoragePage />} />
+                <Route path="media-queue" element={<MediaQueuePage />} />
+              </Route>
 
-            <Route path="/cm" element={<CMRoute><CMLayout /></CMRoute>}>
-              <Route index element={<CMDashboardPage />} />
-              <Route path="content" element={<CMContentPage />} />
-              <Route path="episodes" element={<CMEpisodesPage />} />
-              <Route path="channel" element={<CMChannelPage />} />
-              <Route path="requests" element={<CMRequestsPage />} />
-              <Route path="media-queue" element={<CMMediaQueuePage />} />
-            </Route>
+              <Route path="/cm" element={<CMRoute><CMLayout /></CMRoute>}>
+                <Route index element={<CMDashboardPage />} />
+                <Route path="content" element={<CMContentPage />} />
+                <Route path="episodes" element={<CMEpisodesPage />} />
+                <Route path="channel" element={<CMChannelPage />} />
+                <Route path="requests" element={<CMRequestsPage />} />
+                <Route path="media-queue" element={<CMMediaQueuePage />} />
+              </Route>
 
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </UploadTrackerProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

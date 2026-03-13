@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { createUploadProgressDetails, type UploadProgressDetails } from "@/lib/uploadProgress";
 
 export type MediaJobStatus =
   | "queued"
@@ -116,6 +117,7 @@ async function mediaUploadRequest<T>(
   path: string,
   formData: FormData,
   onUploadProgress?: (progress: number) => void,
+  onUploadProgressDetails?: (details: UploadProgressDetails) => void,
 ) {
   const {
     data: { session },
@@ -133,7 +135,9 @@ async function mediaUploadRequest<T>(
 
     xhr.upload.onprogress = (event) => {
       if (!event.lengthComputable) return;
-      onUploadProgress?.(Math.min(Math.round((event.loaded / event.total) * 100), 100));
+      const details = createUploadProgressDetails(event.loaded, event.total);
+      onUploadProgress?.(details.percent);
+      onUploadProgressDetails?.(details);
     };
 
     xhr.onerror = () => {
@@ -152,7 +156,14 @@ async function mediaUploadRequest<T>(
         })();
 
       if (xhr.status >= 200 && xhr.status < 300) {
+        const videoFile = formData.get("video");
+        const subtitleFile = formData.get("subtitle");
+        const totalBytes =
+          (videoFile instanceof File ? videoFile.size : 0) +
+          (subtitleFile instanceof File ? subtitleFile.size : 0);
+        const details = createUploadProgressDetails(totalBytes, totalBytes);
         onUploadProgress?.(100);
+        onUploadProgressDetails?.(details);
         resolve(payload as T);
         return;
       }
@@ -172,6 +183,7 @@ export async function createMediaJob(input: {
   videoFile: File;
   subtitleFile?: File | null;
   onUploadProgress?: (progress: number) => void;
+  onUploadProgressDetails?: (details: UploadProgressDetails) => void;
 }) {
   const formData = new FormData();
   formData.append("episodeId", input.episodeId);
@@ -189,6 +201,7 @@ export async function createMediaJob(input: {
     "/api/media-jobs",
     formData,
     input.onUploadProgress,
+    input.onUploadProgressDetails,
   );
 }
 
