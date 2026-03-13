@@ -29,6 +29,8 @@ export default function ContentEditorPage() {
   const [saving, setSaving] = useState(false);
   const [genres, setGenres] = useState<Genre[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+  const [channels, setChannels] = useState<{ id: string; channel_name: string | null; owner_name: string | null }[]>([]);
+  const [uploadLimits, setUploadLimits] = useState({ max_video_mb: 350, max_image_mb: 5 });
 
   const [form, setForm] = useState<Partial<TablesInsert<"contents">>>({
     title: "", slug: "", description: "", type: "anime",
@@ -37,28 +39,41 @@ export default function ContentEditorPage() {
     poster_url: "", banner_url: "", thumbnail_url: "", trailer_url: "",
     age_rating: "", country: "", studio: "", alternative_title: "", subtitle: "",
     quality_label: "", duration_minutes: undefined, total_episodes: undefined, total_seasons: undefined,
-    imdb_rating: undefined, rating: 0, view_count: 0,
+    imdb_rating: undefined, rating: 0, view_count: 0, channel_id: undefined,
   });
 
   useEffect(() => {
-    supabase.from("genres").select("*").order("name").then(({ data }) => setGenres(data || []));
+    const init = async () => {
+      const [genresRes, channelsRes, settingsRes] = await Promise.all([
+        supabase.from("genres").select("*").order("name"),
+        supabase.from("content_maker_channels").select("id, channel_name, profiles:owner_id(full_name)").eq("status", "active").order("channel_name"),
+        supabase.from("app_settings" as any).select("value").eq("key", "upload_limits").single(),
+      ]);
+      setGenres(genresRes.data || []);
+      setChannels((channelsRes.data || []).map((ch: any) => ({
+        id: ch.id,
+        channel_name: ch.channel_name,
+        owner_name: ch.profiles?.full_name || null,
+      })));
+      if (settingsRes.data) setUploadLimits((settingsRes.data as any).value);
 
-    if (!isNew && id) {
-      Promise.all([
-        supabase.from("contents").select("*").eq("id", id).single(),
-        supabase.from("content_genres").select("genre_id").eq("content_id", id),
-      ]).then(([contentRes, genresRes]) => {
+      if (!isNew && id) {
+        const [contentRes, genresRes2] = await Promise.all([
+          supabase.from("contents").select("*").eq("id", id).single(),
+          supabase.from("content_genres").select("genre_id").eq("content_id", id),
+        ]);
         if (contentRes.data) setForm(contentRes.data);
-        if (genresRes.data) setSelectedGenres(genresRes.data.map((g) => g.genre_id));
+        if (genresRes2.data) setSelectedGenres(genresRes2.data.map(g => g.genre_id));
         setLoading(false);
-      });
-    }
+      }
+    };
+    init();
   }, [id, isNew]);
 
   const updateField = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm(prev => ({ ...prev, [key]: value }));
     if (key === "title" && isNew) {
-      setForm((prev) => ({ ...prev, slug: slugify(String(value || "")) }));
+      setForm(prev => ({ ...prev, slug: slugify(String(value || "")) }));
     }
   };
 
@@ -69,11 +84,14 @@ export default function ContentEditorPage() {
     }
     setSaving(true);
     try {
+      const payload = { ...form };
+      if (!payload.external_id) payload.external_id = `admin-${Date.now()}`;
+      
       if (isNew) {
-        const { data, error } = await supabase.from("contents").insert({ ...form as TablesInsert<"contents"> }).select("id").single();
+        const { data, error } = await supabase.from("contents").insert(payload as TablesInsert<"contents">).select("id").single();
         if (error) throw error;
         if (data && selectedGenres.length > 0) {
-          await supabase.from("content_genres").insert(selectedGenres.map((gid) => ({ content_id: data.id, genre_id: gid })));
+          await supabase.from("content_genres").insert(selectedGenres.map(gid => ({ content_id: data.id, genre_id: gid })));
         }
         toast.success("Kontent yaratildi");
         navigate(`/admin/content/${data!.id}`);
@@ -82,7 +100,7 @@ export default function ContentEditorPage() {
         if (error) throw error;
         await supabase.from("content_genres").delete().eq("content_id", id!);
         if (selectedGenres.length > 0) {
-          await supabase.from("content_genres").insert(selectedGenres.map((gid) => ({ content_id: id!, genre_id: gid })));
+          await supabase.from("content_genres").insert(selectedGenres.map(gid => ({ content_id: id!, genre_id: gid })));
         }
         toast.success("Saqlandi");
       }
@@ -119,14 +137,34 @@ export default function ContentEditorPage() {
         <section className="rounded-lg border border-border bg-card p-5 space-y-4">
           <h2 className="font-heading text-lg font-semibold text-foreground">Asosiy ma'lumotlar</h2>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Nomi *</Label><Input value={form.title || ""} onChange={(e) => updateField("title", e.target.value)} className="bg-background border-border" /></div>
-            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Muqobil nomi</Label><Input value={form.alternative_title || ""} onChange={(e) => updateField("alternative_title", e.target.value)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Nomi *</Label><Input value={form.title || ""} onChange={e => updateField("title", e.target.value)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Muqobil nomi</Label><Input value={form.alternative_title || ""} onChange={e => updateField("alternative_title", e.target.value)} className="bg-background border-border" /></div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Slug *</Label><Input value={form.slug || ""} onChange={(e) => updateField("slug", e.target.value)} className="bg-background border-border" /></div>
-            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Subtitle</Label><Input value={form.subtitle || ""} onChange={(e) => updateField("subtitle", e.target.value)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Slug *</Label><Input value={form.slug || ""} onChange={e => updateField("slug", e.target.value)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Subtitle</Label><Input value={form.subtitle || ""} onChange={e => updateField("subtitle", e.target.value)} className="bg-background border-border" /></div>
           </div>
-          <div className="space-y-2"><Label className="text-muted-foreground text-sm">Tavsif</Label><Textarea value={form.description || ""} onChange={(e) => updateField("description", e.target.value)} rows={4} className="bg-background border-border" /></div>
+          <div className="space-y-2"><Label className="text-muted-foreground text-sm">Tavsif</Label><Textarea value={form.description || ""} onChange={e => updateField("description", e.target.value)} rows={4} className="bg-background border-border" /></div>
+        </section>
+
+        {/* Channel selection */}
+        <section className="rounded-lg border border-border bg-card p-5 space-y-4">
+          <h2 className="font-heading text-lg font-semibold text-foreground">Kanal</h2>
+          <div className="space-y-2">
+            <Label className="text-muted-foreground text-sm">Content Maker kanali</Label>
+            <Select value={form.channel_id || "none"} onValueChange={v => updateField("channel_id", v === "none" ? null : v)}>
+              <SelectTrigger className="bg-background border-border"><SelectValue placeholder="Kanal tanlang" /></SelectTrigger>
+              <SelectContent className="bg-card border-border">
+                <SelectItem value="none">Kanalsiz (admin kontent)</SelectItem>
+                {channels.map(ch => (
+                  <SelectItem key={ch.id} value={ch.id}>
+                    {ch.channel_name || "Nomsiz"} {ch.owner_name ? `(${ch.owner_name})` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Kontent qaysi content maker kanaliga tegishli ekanligini tanlang</p>
+          </div>
         </section>
 
         {/* Classification */}
@@ -135,7 +173,7 @@ export default function ContentEditorPage() {
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label className="text-muted-foreground text-sm">Turi *</Label>
-              <Select value={form.type} onValueChange={(v) => updateField("type", v as Enums<"content_type">)}>
+              <Select value={form.type} onValueChange={v => updateField("type", v as Enums<"content_type">)}>
                 <SelectTrigger className="bg-background border-border"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-card border-border">
                   <SelectItem value="anime">Anime</SelectItem>
@@ -146,7 +184,7 @@ export default function ContentEditorPage() {
             </div>
             <div className="space-y-2">
               <Label className="text-muted-foreground text-sm">Nashr holati</Label>
-              <Select value={form.publish_status} onValueChange={(v) => updateField("publish_status", v as Enums<"publish_status">)}>
+              <Select value={form.publish_status} onValueChange={v => updateField("publish_status", v as Enums<"publish_status">)}>
                 <SelectTrigger className="bg-background border-border"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-card border-border">
                   <SelectItem value="draft">Qoralama</SelectItem>
@@ -157,7 +195,7 @@ export default function ContentEditorPage() {
             </div>
             <div className="space-y-2">
               <Label className="text-muted-foreground text-sm">Status</Label>
-              <Select value={form.status} onValueChange={(v) => updateField("status", v as Enums<"content_status">)}>
+              <Select value={form.status} onValueChange={v => updateField("status", v as Enums<"content_status">)}>
                 <SelectTrigger className="bg-background border-border"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-card border-border">
                   <SelectItem value="ongoing">Davom etmoqda</SelectItem>
@@ -168,15 +206,15 @@ export default function ContentEditorPage() {
             </div>
           </div>
           <div className="grid grid-cols-4 gap-4">
-            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Yil</Label><Input type="number" value={form.year || ""} onChange={(e) => updateField("year", Number(e.target.value) || null)} className="bg-background border-border" /></div>
-            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Davomiylik (min)</Label><Input type="number" value={form.duration_minutes || ""} onChange={(e) => updateField("duration_minutes", Number(e.target.value) || null)} className="bg-background border-border" /></div>
-            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Yosh chegarasi</Label><Input value={form.age_rating || ""} onChange={(e) => updateField("age_rating", e.target.value)} className="bg-background border-border" /></div>
-            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Sifat</Label><Input value={form.quality_label || ""} onChange={(e) => updateField("quality_label", e.target.value)} placeholder="HD / FHD" className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Yil</Label><Input type="number" value={form.year || ""} onChange={e => updateField("year", Number(e.target.value) || null)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Davomiylik (min)</Label><Input type="number" value={form.duration_minutes || ""} onChange={e => updateField("duration_minutes", Number(e.target.value) || null)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Yosh chegarasi</Label><Input value={form.age_rating || ""} onChange={e => updateField("age_rating", e.target.value)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Sifat</Label><Input value={form.quality_label || ""} onChange={e => updateField("quality_label", e.target.value)} placeholder="HD / FHD" className="bg-background border-border" /></div>
           </div>
           <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Mamlakat</Label><Input value={form.country || ""} onChange={(e) => updateField("country", e.target.value)} className="bg-background border-border" /></div>
-            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Studiya</Label><Input value={form.studio || ""} onChange={(e) => updateField("studio", e.target.value)} className="bg-background border-border" /></div>
-            <div className="space-y-2"><Label className="text-muted-foreground text-sm">IMDB reytingi</Label><Input type="number" step="0.1" value={form.imdb_rating || ""} onChange={(e) => updateField("imdb_rating", Number(e.target.value) || null)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Mamlakat</Label><Input value={form.country || ""} onChange={e => updateField("country", e.target.value)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Studiya</Label><Input value={form.studio || ""} onChange={e => updateField("studio", e.target.value)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">IMDB reytingi</Label><Input type="number" step="0.1" value={form.imdb_rating || ""} onChange={e => updateField("imdb_rating", Number(e.target.value) || null)} className="bg-background border-border" /></div>
           </div>
         </section>
 
@@ -184,14 +222,13 @@ export default function ContentEditorPage() {
         <section className="rounded-lg border border-border bg-card p-5 space-y-4">
           <h2 className="font-heading text-lg font-semibold text-foreground">Janrlar</h2>
           <div className="flex flex-wrap gap-2">
-            {genres.map((g) => {
+            {genres.map(g => {
               const selected = selectedGenres.includes(g.id);
               return (
-                <button key={g.id} onClick={() => setSelectedGenres(selected ? selectedGenres.filter((gid) => gid !== g.id) : [...selectedGenres, g.id])}
+                <button key={g.id} onClick={() => setSelectedGenres(selected ? selectedGenres.filter(gid => gid !== g.id) : [...selectedGenres, g.id])}
                   className={`rounded-md px-3 py-1.5 text-sm font-heading font-medium transition-colors ${
                     selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
-                  }`}
-                >
+                  }`}>
                   {g.name}
                 </button>
               );
@@ -199,53 +236,26 @@ export default function ContentEditorPage() {
           </div>
         </section>
 
-        {/* Media - R2 Uploads */}
+        {/* Media */}
         <section className="rounded-lg border border-border bg-card p-5 space-y-4">
           <h2 className="font-heading text-lg font-semibold text-foreground">Media fayllar</h2>
+          <p className="text-xs text-muted-foreground">Rasm: max {uploadLimits.max_image_mb}MB · Video: max {uploadLimits.max_video_mb}MB</p>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="text-muted-foreground text-sm">Poster rasm</Label>
-              <R2Upload
-                folder="covers"
-                accept="image/*"
-                label="Poster yuklash (jpg, png, webp)"
-                value={form.poster_url || ""}
-                maxSizeMB={10}
-                onUploadComplete={(url) => updateField("poster_url", url)}
-              />
+              <R2Upload folder="covers" accept="image/*" label="Poster yuklash" value={form.poster_url || ""} maxSizeMB={uploadLimits.max_image_mb} onUploadComplete={(url) => updateField("poster_url", url)} />
             </div>
             <div className="space-y-2">
               <Label className="text-muted-foreground text-sm">Banner rasm</Label>
-              <R2Upload
-                folder="banners"
-                accept="image/*"
-                label="Banner yuklash (jpg, png, webp)"
-                value={form.banner_url || ""}
-                maxSizeMB={10}
-                onUploadComplete={(url) => updateField("banner_url", url)}
-              />
+              <R2Upload folder="banners" accept="image/*" label="Banner yuklash" value={form.banner_url || ""} maxSizeMB={uploadLimits.max_image_mb} onUploadComplete={(url) => updateField("banner_url", url)} />
             </div>
             <div className="space-y-2">
-              <Label className="text-muted-foreground text-sm">Thumbnail rasm</Label>
-              <R2Upload
-                folder="thumbnails"
-                accept="image/*"
-                label="Thumbnail yuklash (jpg, png, webp)"
-                value={form.thumbnail_url || ""}
-                maxSizeMB={10}
-                onUploadComplete={(url) => updateField("thumbnail_url", url)}
-              />
+              <Label className="text-muted-foreground text-sm">Thumbnail</Label>
+              <R2Upload folder="thumbnails" accept="image/*" label="Thumbnail yuklash" value={form.thumbnail_url || ""} maxSizeMB={uploadLimits.max_image_mb} onUploadComplete={(url) => updateField("thumbnail_url", url)} />
             </div>
             <div className="space-y-2">
               <Label className="text-muted-foreground text-sm">Treyler video</Label>
-              <R2Upload
-                folder="trailers"
-                accept="video/*"
-                label="Treyler yuklash (mp4, webm)"
-                value={form.trailer_url || ""}
-                maxSizeMB={200}
-                onUploadComplete={(url) => updateField("trailer_url", url)}
-              />
+              <R2Upload folder="trailers" accept="video/*" label="Treyler yuklash" value={form.trailer_url || ""} maxSizeMB={uploadLimits.max_video_mb} onUploadComplete={(url) => updateField("trailer_url", url)} />
             </div>
           </div>
         </section>
@@ -263,13 +273,13 @@ export default function ContentEditorPage() {
             ].map(({ key, label }) => (
               <div key={key} className="flex items-center justify-between rounded-md bg-background px-4 py-3">
                 <Label className="text-sm text-foreground">{label}</Label>
-                <Switch checked={!!form[key]} onCheckedChange={(v) => updateField(key, v)} />
+                <Switch checked={!!form[key]} onCheckedChange={v => updateField(key, v)} />
               </div>
             ))}
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Jami fasllar</Label><Input type="number" value={form.total_seasons || ""} onChange={(e) => updateField("total_seasons", Number(e.target.value) || null)} className="bg-background border-border" /></div>
-            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Jami epizodlar</Label><Input type="number" value={form.total_episodes || ""} onChange={(e) => updateField("total_episodes", Number(e.target.value) || null)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Jami fasllar</Label><Input type="number" value={form.total_seasons || ""} onChange={e => updateField("total_seasons", Number(e.target.value) || null)} className="bg-background border-border" /></div>
+            <div className="space-y-2"><Label className="text-muted-foreground text-sm">Jami epizodlar</Label><Input type="number" value={form.total_episodes || ""} onChange={e => updateField("total_episodes", Number(e.target.value) || null)} className="bg-background border-border" /></div>
           </div>
         </section>
       </div>

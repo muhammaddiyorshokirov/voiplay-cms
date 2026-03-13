@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Film, Tv, Clapperboard, ListVideo,
   Tags, Bell, ShieldCheck, Users, Settings, LogOut, Layers,
-  ScrollText, ChevronDown, MessageSquare, Crown, CreditCard
+  ScrollText, ChevronDown, MessageSquare, Crown, CreditCard, Radio
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -33,6 +33,7 @@ const navItems: NavItem[] = [
   { title: "Fasllar", url: "/admin/seasons", icon: Layers },
   { title: "Epizodlar", url: "/admin/episodes", icon: ListVideo },
   { title: "Janrlar", url: "/admin/genres", icon: Tags },
+  { title: "Kanallar", url: "/admin/channels", icon: Radio },
   { title: "Bannerlar", url: "/admin/banners", icon: Tv },
   { title: "Izohlar", url: "/admin/comments", icon: MessageSquare },
   { title: "Bildirishnomalar", url: "/admin/notifications", icon: Bell },
@@ -77,9 +78,7 @@ export function AdminSidebar() {
                       onClick={() => setOpenGroup(groupOpen ? null : item.title)}
                       className={cn(
                         "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-heading font-medium transition-colors",
-                        active
-                          ? "border-l-2 border-primary bg-sidebar-accent text-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
+                        active ? "border-l-2 border-primary bg-sidebar-accent text-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
                       )}
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
@@ -90,12 +89,7 @@ export function AdminSidebar() {
                       <ul className="ml-7 mt-1 space-y-0.5 border-l border-border pl-3">
                         {item.children!.map((child) => (
                           <li key={child.url}>
-                            <NavLink
-                              to={child.url}
-                              end
-                              className="block rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-                              activeClassName="text-primary font-medium"
-                            >
+                            <NavLink to={child.url} end className="block rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground" activeClassName="text-primary font-medium">
                               {child.title}
                             </NavLink>
                           </li>
@@ -107,10 +101,7 @@ export function AdminSidebar() {
                   <NavLink
                     to={item.url}
                     end={item.url === "/admin"}
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-heading font-medium transition-colors",
-                      "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
-                    )}
+                    className={cn("flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-heading font-medium transition-colors", "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground")}
                     activeClassName="border-l-2 border-primary bg-sidebar-accent text-foreground"
                   >
                     <item.icon className="h-4 w-4 shrink-0" />
