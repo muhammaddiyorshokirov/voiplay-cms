@@ -21,7 +21,7 @@ export default function PremiumPlansPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Plan | null>(null);
   const [form, setForm] = useState({
-    name: "", code: "", description: "", days: 30, old_price: 0, discount_percent: 0,
+    name: "", code: "", description: "", days: 30, price: 0, old_price: 0, discount_percent: 0,
     max_devices: 1, download_allowed: false, is_active: true, is_visible: true,
     is_featured: false, badge_text: "", benefits: "[]",
   });
@@ -36,14 +36,14 @@ export default function PremiumPlansPage() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ name: "", code: "", description: "", days: 30, old_price: 0, discount_percent: 0, max_devices: 1, download_allowed: false, is_active: true, is_visible: true, is_featured: false, badge_text: "", benefits: "[]" });
+    setForm({ name: "", code: "", description: "", days: 30, price: 0, old_price: 0, discount_percent: 0, max_devices: 1, download_allowed: false, is_active: true, is_visible: true, is_featured: false, badge_text: "", benefits: "[]" });
     setDialogOpen(true);
   };
 
   const openEdit = (p: Plan) => {
     setEditing(p);
     setForm({
-      name: p.name, code: p.code, description: p.description || "", days: p.days,
+      name: p.name, code: p.code, description: p.description || "", days: p.days, price: p.price,
       old_price: p.old_price || p.price, discount_percent: Number(p.discount_percent) || 0,
       max_devices: p.max_devices, download_allowed: p.download_allowed, is_active: p.is_active,
       is_visible: p.is_visible, is_featured: p.is_featured, badge_text: p.badge_text || "",
@@ -59,7 +59,7 @@ export default function PremiumPlansPage() {
     
     const payload = {
       name: form.name, code: form.code, description: form.description || null,
-      days: form.days, old_price: form.old_price || null, discount_percent: form.discount_percent,
+      days: form.days, price: form.price, old_price: form.old_price || null, discount_percent: form.discount_percent,
       max_devices: form.max_devices, download_allowed: form.download_allowed,
       is_active: form.is_active, is_visible: form.is_visible, is_featured: form.is_featured,
       badge_text: form.badge_text || null, benefits,
@@ -69,7 +69,7 @@ export default function PremiumPlansPage() {
       const { error } = await supabase.from("premium_plans").update(payload).eq("id", editing.id);
       if (error) { toast.error(error.message); return; }
     } else {
-      const { error } = await supabase.from("premium_plans").insert({ ...payload, price: form.old_price });
+      const { error } = await supabase.from("premium_plans").insert(payload);
       if (error) { toast.error(error.message); return; }
     }
     toast.success("Saqlandi"); setDialogOpen(false); fetchAll();
@@ -122,9 +122,10 @@ export default function PremiumPlansPage() {
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Kod *</Label><Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} className="bg-background border-border" /></div>
             </div>
             <div className="space-y-2"><Label className="text-sm text-muted-foreground">Tavsif</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} className="bg-background border-border" /></div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Kunlar *</Label><Input type="number" value={form.days} onChange={e => setForm(f => ({ ...f, days: Number(e.target.value) }))} className="bg-background border-border" /></div>
-              <div className="space-y-2"><Label className="text-sm text-muted-foreground">Narx (so'm)</Label><Input type="number" value={form.old_price} onChange={e => setForm(f => ({ ...f, old_price: Number(e.target.value) }))} className="bg-background border-border" /></div>
+              <div className="space-y-2"><Label className="text-sm text-muted-foreground">Aktiv narx (so'm)</Label><Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: Number(e.target.value) }))} className="bg-background border-border" /></div>
+              <div className="space-y-2"><Label className="text-sm text-muted-foreground">Eski narx (so'm)</Label><Input type="number" value={form.old_price} onChange={e => setForm(f => ({ ...f, old_price: Number(e.target.value) }))} className="bg-background border-border" /></div>
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Chegirma %</Label><Input type="number" value={form.discount_percent} onChange={e => setForm(f => ({ ...f, discount_percent: Number(e.target.value) }))} className="bg-background border-border" /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">

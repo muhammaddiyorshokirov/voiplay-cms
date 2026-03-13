@@ -344,12 +344,14 @@ export type Database = {
           created_at: string
           id: string
           instagram_url: string | null
+          max_storage_bytes: number
           owner_id: string
           rating_avg: number
           rating_votes_count: number
           status: Database["public"]["Enums"]["channel_status"]
           telegram_url: string | null
           updated_at: string
+          used_storage_bytes: number
           youtube_url: string | null
         }
         Insert: {
@@ -360,12 +362,14 @@ export type Database = {
           created_at?: string
           id?: string
           instagram_url?: string | null
+          max_storage_bytes?: number
           owner_id: string
           rating_avg?: number
           rating_votes_count?: number
           status?: Database["public"]["Enums"]["channel_status"]
           telegram_url?: string | null
           updated_at?: string
+          used_storage_bytes?: number
           youtube_url?: string | null
         }
         Update: {
@@ -376,12 +380,14 @@ export type Database = {
           created_at?: string
           id?: string
           instagram_url?: string | null
+          max_storage_bytes?: number
           owner_id?: string
           rating_avg?: number
           rating_votes_count?: number
           status?: Database["public"]["Enums"]["channel_status"]
           telegram_url?: string | null
           updated_at?: string
+          used_storage_bytes?: number
           youtube_url?: string | null
         }
         Relationships: []
@@ -1163,6 +1169,97 @@ export type Database = {
           },
         ]
       }
+      storage_assets: {
+        Row: {
+          asset_kind: string
+          bucket_name: string
+          content_id: string | null
+          content_maker_channel_id: string | null
+          created_at: string
+          episode_id: string | null
+          file_extension: string | null
+          file_name: string
+          folder: string
+          id: string
+          metadata: Json
+          mime_type: string | null
+          object_key: string
+          owner_user_id: string | null
+          public_url: string | null
+          size_bytes: number | null
+          source_column: string | null
+          source_table: string | null
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          asset_kind?: string
+          bucket_name?: string
+          content_id?: string | null
+          content_maker_channel_id?: string | null
+          created_at?: string
+          episode_id?: string | null
+          file_extension?: string | null
+          file_name: string
+          folder?: string
+          id?: string
+          metadata?: Json
+          mime_type?: string | null
+          object_key: string
+          owner_user_id?: string | null
+          public_url?: string | null
+          size_bytes?: number | null
+          source_column?: string | null
+          source_table?: string | null
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          asset_kind?: string
+          bucket_name?: string
+          content_id?: string | null
+          content_maker_channel_id?: string | null
+          created_at?: string
+          episode_id?: string | null
+          file_extension?: string | null
+          file_name?: string
+          folder?: string
+          id?: string
+          metadata?: Json
+          mime_type?: string | null
+          object_key?: string
+          owner_user_id?: string | null
+          public_url?: string | null
+          size_bytes?: number | null
+          source_column?: string | null
+          source_table?: string | null
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storage_assets_content_id_fkey"
+            columns: ["content_id"]
+            isOneToOne: false
+            referencedRelation: "contents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "storage_assets_content_maker_channel_id_fkey"
+            columns: ["content_maker_channel_id"]
+            isOneToOne: false
+            referencedRelation: "content_maker_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "storage_assets_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       talents: {
         Row: {
           bio: string | null
@@ -1670,6 +1767,27 @@ export type Database = {
         }
         Returns: boolean
       }
+      recalculate_all_channel_storage_usage: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      recalculate_channel_storage_usage: {
+        Args: { _channel_id: string }
+        Returns: {
+          channel_id: string
+          max_storage_bytes: number
+          remaining_storage_bytes: number
+          used_storage_bytes: number
+        }[]
+      }
+      release_channel_storage: {
+        Args: { _bytes: number; _channel_id: string }
+        Returns: {
+          max_storage_bytes: number
+          remaining_storage_bytes: number
+          used_storage_bytes: number
+        }[]
+      }
       mark_user_device_inactive: {
         Args: { _device_id: string }
         Returns: {
@@ -1746,6 +1864,15 @@ export type Database = {
       refresh_profile_subscription_state: {
         Args: { _profile_id: string }
         Returns: undefined
+      }
+      reserve_channel_storage: {
+        Args: { _bytes: number; _channel_id: string }
+        Returns: {
+          allowed: boolean
+          max_storage_bytes: number
+          remaining_storage_bytes: number
+          used_storage_bytes: number
+        }[]
       }
       register_user_device: {
         Args: {

@@ -47,13 +47,22 @@ export default function SettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     const entries = Object.entries(settings) as [string, any][];
-    for (const [key, value] of entries) {
-      await supabase.from("app_settings" as any).update({
+    const { error } = await supabase.from("app_settings" as any).upsert(
+      entries.map(([key, value]) => ({
+        key,
         value,
         updated_at: new Date().toISOString(),
         updated_by: user?.id,
-      } as any).eq("key", key);
+      })),
+      { onConflict: "key" },
+    );
+
+    if (error) {
+      toast.error(error.message);
+      setSaving(false);
+      return;
     }
+
     toast.success("Sozlamalar saqlandi");
     setSaving(false);
   };

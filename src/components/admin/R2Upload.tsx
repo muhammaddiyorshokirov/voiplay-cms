@@ -12,6 +12,7 @@ interface R2UploadProps {
   label?: string;
   value?: string;
   maxSizeMB?: number;
+  metadata?: Record<string, string | number | boolean | null | undefined>;
   onUploadComplete: (url: string, key: string) => void;
   className?: string;
 }
@@ -84,6 +85,7 @@ export function R2Upload({
   label = "Fayl yuklash",
   value,
   maxSizeMB = 500,
+  metadata,
   onUploadComplete,
   className,
 }: R2UploadProps) {
@@ -129,6 +131,9 @@ export function R2Upload({
       const formData = new FormData();
       formData.append("file", file);
       formData.append("folder", folder);
+      if (metadata) {
+        formData.append("metadata", JSON.stringify(metadata));
+      }
 
       const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
       const response = await fetch(
@@ -154,15 +159,15 @@ export function R2Upload({
 
       onUploadComplete(result.url, result.key);
       toast.success(`Fayl yuklandi! (${formatSize(file.size)})`);
-    } catch (error: any) {
-      toast.error(error.message || "Yuklashda xato yuz berdi");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Yuklashda xato yuz berdi");
     } finally {
       setTimeout(() => {
         setUploading(false);
         setProgress(0);
       }, 500);
     }
-  }, [folder, maxSizeMB, accept, onUploadComplete]);
+  }, [folder, maxSizeMB, accept, metadata, onUploadComplete]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();

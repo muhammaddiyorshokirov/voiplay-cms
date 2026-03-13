@@ -24,6 +24,7 @@ import CommentsPage from "@/pages/admin/CommentsPage";
 import PremiumPlansPage from "@/pages/admin/PremiumPlansPage";
 import SubscriptionsPage from "@/pages/admin/SubscriptionsPage";
 import ChannelsPage from "@/pages/admin/ChannelsPage";
+import StoragePage from "@/pages/admin/StoragePage";
 import CMDashboardPage from "@/pages/cm/CMDashboardPage";
 import CMContentPage from "@/pages/cm/CMContentPage";
 import CMEpisodesPage from "@/pages/cm/CMEpisodesPage";
@@ -93,6 +94,7 @@ const App = () => (
               <Route path="premium-plans" element={<PremiumPlansPage />} />
               <Route path="subscriptions" element={<SubscriptionsPage />} />
               <Route path="channels" element={<ChannelsPage />} />
+              <Route path="storage" element={<StoragePage />} />
             </Route>
 
             <Route path="/cm" element={<CMRoute><CMLayout /></CMRoute>}>

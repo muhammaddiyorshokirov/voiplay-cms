@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { R2Upload } from "@/components/admin/R2Upload";
+import { StorageAssetPicker } from "@/components/admin/StorageAssetPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,9 +13,18 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Save, Trash2, ArrowLeft } from "lucide-react";
 import type { Tables, TablesInsert, Enums } from "@/integrations/supabase/types";
+import { syncStorageAssetsByUrls } from "@/lib/storageAssets";
 
 type Content = Tables<"contents">;
 type Genre = Tables<"genres">;
+type ChannelRow = {
+  id: string;
+  owner_id: string;
+  channel_name: string | null;
+  profiles?: { full_name: string | null } | null;
+};
+type UploadLimitSettings = { max_video_mb: number; max_image_mb: number };
+const defaultUploadLimits: UploadLimitSettings = { max_video_mb: 350, max_image_mb: 5 };
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -29,13 +39,14 @@ export default function ContentEditorPage() {
   const [saving, setSaving] = useState(false);
   const [genres, setGenres] = useState<Genre[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
-  const [channels, setChannels] = useState<{ id: string; channel_name: string | null; owner_name: string | null }[]>([]);
-  const [uploadLimits, setUploadLimits] = useState({ max_video_mb: 350, max_image_mb: 5 });
+  const [channels, setChannels] = useState<{ id: string; channel_name: string | null; owner_id: string; owner_name: string | null }[]>([]);
+  const [uploadLimits, setUploadLimits] = useState(defaultUploadLimits);
 
   const [form, setForm] = useState<Partial<TablesInsert<"contents">>>({
     title: "", slug: "", description: "", type: "anime",
     publish_status: "draft", status: "upcoming", year: new Date().getFullYear(),
     is_premium: false, is_featured: false, is_trending: false, has_subtitle: false, has_dub: false,
+    is_recommended: false,
     poster_url: "", banner_url: "", thumbnail_url: "", trailer_url: "",
     age_rating: "", country: "", studio: "", alternative_title: "", subtitle: "",
     quality_label: "", duration_minutes: undefined, total_episodes: undefined, total_seasons: undefined,
@@ -46,16 +57,17 @@ export default function ContentEditorPage() {
     const init = async () => {
       const [genresRes, channelsRes, settingsRes] = await Promise.all([
         supabase.from("genres").select("*").order("name"),
-        supabase.from("content_maker_channels").select("id, channel_name, profiles:owner_id(full_name)").eq("status", "active").order("channel_name"),
-        supabase.from("app_settings" as any).select("value").eq("key", "upload_limits").single(),
+        supabase.from("content_maker_channels").select("id, owner_id, channel_name, profiles:owner_id(full_name)").eq("status", "active").order("channel_name"),
+        supabase.from("app_settings").select("value").eq("key", "upload_limits").single(),
       ]);
       setGenres(genresRes.data || []);
-      setChannels((channelsRes.data || []).map((ch: any) => ({
+      setChannels(((channelsRes.data as ChannelRow[]) || []).map((ch) => ({
         id: ch.id,
         channel_name: ch.channel_name,
+        owner_id: ch.owner_id,
         owner_name: ch.profiles?.full_name || null,
       })));
-      if (settingsRes.data) setUploadLimits((settingsRes.data as any).value);
+      if (settingsRes.data) setUploadLimits((settingsRes.data.value as UploadLimitSettings) || defaultUploadLimits);
 
       if (!isNew && id) {
         const [contentRes, genresRes2] = await Promise.all([
@@ -69,6 +81,8 @@ export default function ContentEditorPage() {
     };
     init();
   }, [id, isNew]);
+
+  const selectedChannel = channels.find((channel) => channel.id === form.channel_id) || null;
 
   const updateField = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -93,6 +107,20 @@ export default function ContentEditorPage() {
         if (data && selectedGenres.length > 0) {
           await supabase.from("content_genres").insert(selectedGenres.map(gid => ({ content_id: data.id, genre_id: gid })));
         }
+        await syncStorageAssetsByUrls(
+          [
+            { url: payload.poster_url, assetKind: "image", sourceColumn: "poster_url" },
+            { url: payload.banner_url, assetKind: "image", sourceColumn: "banner_url" },
+            { url: payload.thumbnail_url, assetKind: "image", sourceColumn: "thumbnail_url" },
+            { url: payload.trailer_url, assetKind: "video", sourceColumn: "trailer_url" },
+          ],
+          {
+            channelId: (payload.channel_id as string | null) || null,
+            contentId: data.id,
+            ownerUserId: selectedChannel?.owner_id || null,
+            sourceTable: "contents",
+          },
+        );
         toast.success("Kontent yaratildi");
         navigate(`/admin/content/${data!.id}`);
       } else {
@@ -102,10 +130,24 @@ export default function ContentEditorPage() {
         if (selectedGenres.length > 0) {
           await supabase.from("content_genres").insert(selectedGenres.map(gid => ({ content_id: id!, genre_id: gid })));
         }
+        await syncStorageAssetsByUrls(
+          [
+            { url: form.poster_url, assetKind: "image", sourceColumn: "poster_url" },
+            { url: form.banner_url, assetKind: "image", sourceColumn: "banner_url" },
+            { url: form.thumbnail_url, assetKind: "image", sourceColumn: "thumbnail_url" },
+            { url: form.trailer_url, assetKind: "video", sourceColumn: "trailer_url" },
+          ],
+          {
+            channelId: (form.channel_id as string | null) || null,
+            contentId: id!,
+            ownerUserId: selectedChannel?.owner_id || null,
+            sourceTable: "contents",
+          },
+        );
         toast.success("Saqlandi");
       }
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Saqlashda xatolik yuz berdi");
     }
     setSaving(false);
   };
@@ -243,19 +285,51 @@ export default function ContentEditorPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="text-muted-foreground text-sm">Poster rasm</Label>
-              <R2Upload folder="covers" accept="image/*" label="Poster yuklash" value={form.poster_url || ""} maxSizeMB={uploadLimits.max_image_mb} onUploadComplete={(url) => updateField("poster_url", url)} />
+              <R2Upload folder="covers" accept="image/*" label="Poster yuklash" value={form.poster_url || ""} maxSizeMB={uploadLimits.max_image_mb} metadata={{ assetKind: "image", channelId: form.channel_id || null, channelName: selectedChannel?.channel_name || null, contentId: isNew ? null : id || null, contentTitle: form.title || form.slug || null, contentType: form.type || null, ownerUserId: selectedChannel?.owner_id || null, sourceTable: "contents", sourceColumn: "poster_url" }} onUploadComplete={(url) => updateField("poster_url", url)} />
+              <StorageAssetPicker
+                title="Poster uchun oldingi faylni tanlash"
+                selectedUrl={form.poster_url || ""}
+                assetKinds={["image"]}
+                ownerUserId={selectedChannel?.owner_id || null}
+                channelId={(form.channel_id as string | null) || null}
+                onSelect={(asset) => updateField("poster_url", asset.public_url || "")}
+              />
             </div>
             <div className="space-y-2">
               <Label className="text-muted-foreground text-sm">Banner rasm</Label>
-              <R2Upload folder="banners" accept="image/*" label="Banner yuklash" value={form.banner_url || ""} maxSizeMB={uploadLimits.max_image_mb} onUploadComplete={(url) => updateField("banner_url", url)} />
+              <R2Upload folder="banners" accept="image/*" label="Banner yuklash" value={form.banner_url || ""} maxSizeMB={uploadLimits.max_image_mb} metadata={{ assetKind: "image", channelId: form.channel_id || null, channelName: selectedChannel?.channel_name || null, contentId: isNew ? null : id || null, contentTitle: form.title || form.slug || null, contentType: form.type || null, ownerUserId: selectedChannel?.owner_id || null, sourceTable: "contents", sourceColumn: "banner_url" }} onUploadComplete={(url) => updateField("banner_url", url)} />
+              <StorageAssetPicker
+                title="Banner uchun oldingi faylni tanlash"
+                selectedUrl={form.banner_url || ""}
+                assetKinds={["image"]}
+                ownerUserId={selectedChannel?.owner_id || null}
+                channelId={(form.channel_id as string | null) || null}
+                onSelect={(asset) => updateField("banner_url", asset.public_url || "")}
+              />
             </div>
             <div className="space-y-2">
               <Label className="text-muted-foreground text-sm">Thumbnail</Label>
-              <R2Upload folder="thumbnails" accept="image/*" label="Thumbnail yuklash" value={form.thumbnail_url || ""} maxSizeMB={uploadLimits.max_image_mb} onUploadComplete={(url) => updateField("thumbnail_url", url)} />
+              <R2Upload folder="thumbnails" accept="image/*" label="Thumbnail yuklash" value={form.thumbnail_url || ""} maxSizeMB={uploadLimits.max_image_mb} metadata={{ assetKind: "image", channelId: form.channel_id || null, channelName: selectedChannel?.channel_name || null, contentId: isNew ? null : id || null, contentTitle: form.title || form.slug || null, contentType: form.type || null, ownerUserId: selectedChannel?.owner_id || null, sourceTable: "contents", sourceColumn: "thumbnail_url" }} onUploadComplete={(url) => updateField("thumbnail_url", url)} />
+              <StorageAssetPicker
+                title="Thumbnail uchun oldingi faylni tanlash"
+                selectedUrl={form.thumbnail_url || ""}
+                assetKinds={["image"]}
+                ownerUserId={selectedChannel?.owner_id || null}
+                channelId={(form.channel_id as string | null) || null}
+                onSelect={(asset) => updateField("thumbnail_url", asset.public_url || "")}
+              />
             </div>
             <div className="space-y-2">
               <Label className="text-muted-foreground text-sm">Treyler video</Label>
-              <R2Upload folder="trailers" accept="video/*" label="Treyler yuklash" value={form.trailer_url || ""} maxSizeMB={uploadLimits.max_video_mb} onUploadComplete={(url) => updateField("trailer_url", url)} />
+              <R2Upload folder="trailers" accept="video/*" label="Treyler yuklash" value={form.trailer_url || ""} maxSizeMB={uploadLimits.max_video_mb} metadata={{ assetKind: "video", channelId: form.channel_id || null, channelName: selectedChannel?.channel_name || null, contentId: isNew ? null : id || null, contentTitle: form.title || form.slug || null, contentType: form.type || null, ownerUserId: selectedChannel?.owner_id || null, sourceTable: "contents", sourceColumn: "trailer_url" }} onUploadComplete={(url) => updateField("trailer_url", url)} />
+              <StorageAssetPicker
+                title="Treyler uchun oldingi faylni tanlash"
+                selectedUrl={form.trailer_url || ""}
+                assetKinds={["video"]}
+                ownerUserId={selectedChannel?.owner_id || null}
+                channelId={(form.channel_id as string | null) || null}
+                onSelect={(asset) => updateField("trailer_url", asset.public_url || "")}
+              />
             </div>
           </div>
         </section>
@@ -268,6 +342,7 @@ export default function ContentEditorPage() {
               { key: "is_premium" as const, label: "Premium kontent" },
               { key: "is_featured" as const, label: "Tavsiya etilgan" },
               { key: "is_trending" as const, label: "Trendda" },
+              { key: "is_recommended" as const, label: "Tavsiya lentasida" },
               { key: "has_subtitle" as const, label: "Subtitrlar mavjud" },
               { key: "has_dub" as const, label: "Dublyaj mavjud" },
             ].map(({ key, label }) => (
