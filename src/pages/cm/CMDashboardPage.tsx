@@ -1,106 +1,144 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { StatsCard } from "@/components/admin/StatsCard";
 import { Progress } from "@/components/ui/progress";
-import { Film, HardDrive, ListVideo, Database, PieChart } from "lucide-react";
+import { toast } from "sonner";
+import {
+  CheckCircle2,
+  Film,
+  HardDrive,
+  Inbox,
+  ListVideo,
+  Star,
+  TrendingUp,
+} from "lucide-react";
 import { formatBytes } from "@/lib/storageAssets";
-
-interface ChannelStorageStat {
-  id: string;
-  channel_name: string | null;
-  max_storage_bytes: number;
-  used_storage_bytes: number;
-}
-
-interface DashboardState {
-  contents: number;
-  episodes: number;
-  totalAllocatedBytes: number;
-  totalUsedBytes: number;
-  totalRemainingBytes: number;
-  channels: ChannelStorageStat[];
-}
+import {
+  fetchOwnedChannels,
+  fetchOwnedContents,
+  fetchOwnedEpisodes,
+  fetchOwnedRequests,
+  getContentTypeLabel,
+  type CMChannelOption,
+  type CMContentRow,
+  type CMEpisodeRow,
+  type CMRequestRow,
+} from "@/lib/cmWorkspace";
 
 function getUsagePercent(usedBytes?: number | null, maxBytes?: number | null) {
   if (!maxBytes || maxBytes <= 0) return 0;
   return Math.min((Math.max(usedBytes || 0, 0) / maxBytes) * 100, 100);
 }
 
+interface DashboardState {
+  channels: CMChannelOption[];
+  contents: CMContentRow[];
+  episodes: CMEpisodeRow[];
+  requests: CMRequestRow[];
+}
+
 export default function CMDashboardPage() {
   const { user } = useAuth();
-  const [stats, setStats] = useState<DashboardState>({
-    contents: 0,
-    episodes: 0,
-    totalAllocatedBytes: 0,
-    totalUsedBytes: 0,
-    totalRemainingBytes: 0,
+  const [state, setState] = useState<DashboardState>({
     channels: [],
+    contents: [],
+    episodes: [],
+    requests: [],
   });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
     if (!user) return;
 
-    async function fetch() {
-      const { data: channels } = await supabase
-        .from("content_maker_channels")
-        .select("id, channel_name, max_storage_bytes, used_storage_bytes")
-        .eq("owner_id", user.id);
-
-      const channelData = (channels || []) as ChannelStorageStat[];
-      const channelIds = channelData.map((channel) => channel.id);
-      const totalAllocatedBytes = channelData.reduce(
-        (sum, channel) => sum + (channel.max_storage_bytes || 0),
-        0,
-      );
-      const totalUsedBytes = channelData.reduce(
-        (sum, channel) => sum + (channel.used_storage_bytes || 0),
-        0,
-      );
-
-      if (channelIds.length === 0) {
-        setStats({
-          contents: 0,
-          episodes: 0,
-          totalAllocatedBytes,
-          totalUsedBytes,
-          totalRemainingBytes: Math.max(
-            totalAllocatedBytes - totalUsedBytes,
-            0,
-          ),
-          channels: channelData,
-        });
-        setLoading(false);
-        return;
-      }
-
-      const [contentsRes, episodesRes] = await Promise.all([
-        supabase
-          .from("contents")
-          .select("id", { count: "exact" })
-          .in("channel_id", channelIds)
-          .is("deleted_at", null),
-        supabase
-          .from("episodes")
-          .select("id", { count: "exact" })
-          .in("channel_id", channelIds),
+    setLoading(true);
+    try {
+      const channels = await fetchOwnedChannels(user.id);
+      const channelIds = channels.map((channel) => channel.id);
+      const [contents, episodes, requests] = await Promise.all([
+        fetchOwnedContents(channelIds),
+        fetchOwnedEpisodes(channelIds),
+        fetchOwnedRequests(user.id),
       ]);
 
-      setStats({
-        contents: contentsRes.count || 0,
-        episodes: episodesRes.count || 0,
-        totalAllocatedBytes,
-        totalUsedBytes,
-        totalRemainingBytes: Math.max(totalAllocatedBytes - totalUsedBytes, 0),
-        channels: channelData,
+      setState({ channels, contents, episodes, requests });
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Dashboard statistikasini yuklab bo'lmadi",
+      );
+      setState({
+        channels: [],
+        contents: [],
+        episodes: [],
+        requests: [],
       });
+    } finally {
       setLoading(false);
     }
-
-    fetch();
   }, [user]);
+
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
+
+  const summary = useMemo(() => {
+    const publishedContents = state.contents.filter(
+      (content) => content.publish_status === "published",
+    ).length;
+    const totalViews = state.contents.reduce(
+      (sum, content) => sum + (content.view_count || 0),
+      0,
+    );
+    const ratedContents = state.contents.filter(
+      (content) => Number(content.rating_avg || 0) > 0,
+    );
+    const averageRating = ratedContents.length
+      ? ratedContents.reduce(
+          (sum, content) => sum + Number(content.rating_avg || 0),
+          0,
+        ) / ratedContents.length
+      : 0;
+    const pendingRequests = state.requests.filter(
+      (request) => request.status === "pending",
+    ).length;
+    const approvedRequests = state.requests.filter(
+      (request) => request.status === "approved",
+    ).length;
+    const totalAllocatedBytes = state.channels.reduce(
+      (sum, channel) => sum + (channel.max_storage_bytes || 0),
+      0,
+    );
+    const totalUsedBytes = state.channels.reduce(
+      (sum, channel) => sum + (channel.used_storage_bytes || 0),
+      0,
+    );
+
+    return {
+      publishedContents,
+      totalViews,
+      averageRating,
+      pendingRequests,
+      approvedRequests,
+      totalAllocatedBytes,
+      totalUsedBytes,
+      totalRemainingBytes: Math.max(totalAllocatedBytes - totalUsedBytes, 0),
+    };
+  }, [state.channels, state.contents, state.requests]);
+
+  const topContents = useMemo(
+    () =>
+      [...state.contents]
+        .sort((left, right) => (right.view_count || 0) - (left.view_count || 0))
+        .slice(0, 5),
+    [state.contents],
+  );
+
+  const totalUsagePercent = getUsagePercent(
+    summary.totalUsedBytes,
+    summary.totalAllocatedBytes,
+  );
 
   if (loading) {
     return (
@@ -110,105 +148,159 @@ export default function CMDashboardPage() {
     );
   }
 
-  const totalUsagePercent = getUsagePercent(
-    stats.totalUsedBytes,
-    stats.totalAllocatedBytes,
-  );
-
   return (
     <div className="animate-fade-in space-y-6">
       <PageHeader
-        title="Kontent yaratuvchi paneli"
-        subtitle="Kontent va storage statistikangiz"
+        title="Boshqaruv paneli"
+        subtitle="O'zingizga tegishli kontentlar, viewlar va storage statistikasi"
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatsCard title="Kontentlar" value={stats.contents} icon={Film} />
-        <StatsCard title="Epizodlar" value={stats.episodes} icon={ListVideo} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
+        <StatsCard title="Kontentlar" value={state.contents.length} icon={Film} />
+        <StatsCard title="Nashr qilingan" value={summary.publishedContents} icon={CheckCircle2} />
+        <StatsCard title="Epizodlar" value={state.episodes.length} icon={ListVideo} />
+        <StatsCard title="Jami view" value={summary.totalViews} icon={TrendingUp} />
         <StatsCard
-          title="Ajratilgan xotira"
-          value={formatBytes(stats.totalAllocatedBytes)}
-          icon={Database}
+          title="O'rtacha reyting"
+          value={summary.averageRating ? summary.averageRating.toFixed(1) : "0.0"}
+          icon={Star}
         />
-        <StatsCard
-          title="Ishlatilgan xotira"
-          value={formatBytes(stats.totalUsedBytes)}
-          icon={HardDrive}
-        />
-        <StatsCard
-          title="Qolgan xotira"
-          value={formatBytes(stats.totalRemainingBytes)}
-          icon={PieChart}
-        />
+        <StatsCard title="Pending so'rov" value={summary.pendingRequests} icon={Inbox} />
       </div>
 
-      <section className="rounded-lg border border-border bg-card p-5">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="font-heading text-lg font-semibold text-foreground">
-              Storage statistikasi
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Admin ajratgan joy va siz ishlatayotgan R2 hajmi shu yerda
-              ko'rinadi
-            </p>
-          </div>
-          <div className="text-right text-sm text-muted-foreground">
-            <p>
-              {formatBytes(stats.totalUsedBytes)} /{" "}
-              {formatBytes(stats.totalAllocatedBytes)}
-            </p>
-            <p>{totalUsagePercent.toFixed(0)}% ishlatilgan</p>
-          </div>
-        </div>
-        <Progress value={totalUsagePercent} className="mt-4 h-2" />
-
-        <div className="mt-5 space-y-3">
-          {stats.channels.length > 0 ? (
-            stats.channels.map((channel) => {
-              const usagePercent = getUsagePercent(
-                channel.used_storage_bytes,
-                channel.max_storage_bytes,
-              );
-              const remainingBytes = Math.max(
-                (channel.max_storage_bytes || 0) -
-                  (channel.used_storage_bytes || 0),
-                0,
-              );
-
-              return (
-                <div
-                  key={channel.id}
-                  className="rounded-lg border border-border bg-background/40 p-4"
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="font-medium text-foreground">
-                        {channel.channel_name || "Nomsiz kanal"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Qoldi: {formatBytes(remainingBytes)}
-                      </p>
-                    </div>
-                    <div className="text-right text-xs text-muted-foreground">
-                      <p>
-                        {formatBytes(channel.used_storage_bytes)} /{" "}
-                        {formatBytes(channel.max_storage_bytes)}
-                      </p>
-                      <p>{usagePercent.toFixed(0)}%</p>
-                    </div>
-                  </div>
-                  <Progress value={usagePercent} className="mt-3 h-2" />
-                </div>
-              );
-            })
-          ) : (
-            <div className="rounded-lg border border-dashed border-border bg-background/30 p-6 text-center text-sm text-muted-foreground">
-              Hozircha sizga biriktirilgan kanal yo'q.
+      <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
+        <section className="rounded-lg border border-border bg-card p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="font-heading text-lg font-semibold text-foreground">
+                Eng mashhur kontentlar
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Ko'rishlar soni bo'yicha eng yaxshi natijalar
+              </p>
             </div>
-          )}
-        </div>
-      </section>
+            <div className="text-right text-sm text-muted-foreground">
+              <p>{summary.totalViews} jami view</p>
+              <p>{summary.approvedRequests} ta tasdiqlangan so'rov</p>
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {topContents.length > 0 ? (
+              topContents.map((content, index) => (
+                <div
+                  key={content.id}
+                  className="flex items-center gap-3 rounded-lg border border-border bg-background/40 p-3"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                    {index + 1}
+                  </div>
+                  {content.poster_url ? (
+                    <img
+                      src={content.poster_url}
+                      alt=""
+                      className="h-14 w-10 rounded object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-14 w-10 items-center justify-center rounded bg-secondary text-xs text-foreground">
+                      {content.title.slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-foreground">
+                      {content.title}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {getContentTypeLabel(content.type)} ·{" "}
+                      {content.content_maker_channels?.channel_name || "Kanal yo'q"}
+                    </p>
+                  </div>
+                  <div className="text-right text-sm">
+                    <p className="font-medium text-foreground">
+                      {content.view_count || 0}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Reyting {Number(content.rating_avg || 0).toFixed(1)}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-lg border border-dashed border-border bg-background/30 p-6 text-center text-sm text-muted-foreground">
+                Hozircha statistikaga tushgan kontent yo'q.
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-border bg-card p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="font-heading text-lg font-semibold text-foreground">
+                Storage statistikasi
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Kanal bo'yicha ajratilgan va ishlatilgan joy
+              </p>
+            </div>
+            <HardDrive className="h-5 w-5 text-primary" />
+          </div>
+
+          <div className="mt-4 rounded-lg border border-border bg-background/40 p-4">
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>Jami ishlatilgan</span>
+              <span>
+                {formatBytes(summary.totalUsedBytes)} /{" "}
+                {formatBytes(summary.totalAllocatedBytes)}
+              </span>
+            </div>
+            <Progress value={totalUsagePercent} className="mt-3 h-2" />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Qolgan joy: {formatBytes(summary.totalRemainingBytes)}
+            </p>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {state.channels.length > 0 ? (
+              state.channels.map((channel) => {
+                const usagePercent = getUsagePercent(
+                  channel.used_storage_bytes,
+                  channel.max_storage_bytes,
+                );
+                return (
+                  <div
+                    key={channel.id}
+                    className="rounded-lg border border-border bg-background/40 p-4"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {channel.channel_name || "Nomsiz kanal"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Holat: {channel.status}
+                        </p>
+                      </div>
+                      <div className="text-right text-xs text-muted-foreground">
+                        <p>
+                          {formatBytes(channel.used_storage_bytes)} /{" "}
+                          {formatBytes(channel.max_storage_bytes)}
+                        </p>
+                        <p>{usagePercent.toFixed(0)}%</p>
+                      </div>
+                    </div>
+                    <Progress value={usagePercent} className="mt-3 h-2" />
+                  </div>
+                );
+              })
+            ) : (
+              <div className="rounded-lg border border-dashed border-border bg-background/30 p-6 text-center text-sm text-muted-foreground">
+                Hozircha sizga kanal biriktirilmagan.
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
