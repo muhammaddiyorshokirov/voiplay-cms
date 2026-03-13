@@ -42,10 +42,13 @@ interface ContentRow {
   title: string;
   type: Enums<"content_type"> | null;
   channel_id: string | null;
-  content_maker_channels?: {
-    channel_name: string | null;
-    owner_id: string | null;
-  } | null;
+}
+
+interface ChannelLookupRow {
+  id: string;
+  channel_name: string | null;
+  owner_id: string;
+  status: Enums<"channel_status">;
 }
 
 function normalizeDisplayValue(value?: string | null) {
@@ -85,7 +88,10 @@ export async function fetchProfilesByIds(ids: Array<string | null | undefined>) 
     .select("id, full_name, username, avatar_url")
     .in("id", uniqueIds);
 
-  if (error) throw error;
+  if (error) {
+    console.warn("Failed to fetch profiles", error);
+    return {} as Record<string, ProfileLookup>;
+  }
 
   return ((data || []) as ProfileLookup[]).reduce<Record<string, ProfileLookup>>(
     (accumulator, profile) => {
@@ -96,24 +102,65 @@ export async function fetchProfilesByIds(ids: Array<string | null | undefined>) 
   );
 }
 
-export async function fetchContentMakerOptions() {
+export async function fetchChannelsByIds(ids: Array<string | null | undefined>) {
+  const uniqueIds = [...new Set(ids.filter(Boolean) as string[])];
+  if (uniqueIds.length === 0) {
+    return {} as Record<string, ChannelLookupRow>;
+  }
+
   const { data, error } = await supabase
-    .from("user_roles")
-    .select("user_id")
-    .eq("role", "content_maker");
+    .from("content_maker_channels")
+    .select("id, channel_name, owner_id, status")
+    .in("id", uniqueIds);
+
+  if (error) {
+    console.warn("Failed to fetch channels", error);
+    return {} as Record<string, ChannelLookupRow>;
+  }
+
+  return ((data || []) as ChannelLookupRow[]).reduce<Record<string, ChannelLookupRow>>(
+    (accumulator, channel) => {
+      accumulator[channel.id] = channel;
+      return accumulator;
+    },
+    {},
+  );
+}
+
+export async function fetchContentMakerOptions() {
+  const [rolesRes, ownersRes] = await Promise.all([
+    supabase.from("user_roles").select("user_id").eq("role", "content_maker"),
+    supabase.from("content_maker_channels").select("owner_id"),
+  ]);
+
+  const candidateIds = [
+    ...new Set(
+      [
+        ...(rolesRes.data || []).map((item) => item.user_id),
+        ...(ownersRes.data || []).map((item) => item.owner_id),
+      ].filter(Boolean),
+    ),
+  ];
+
+  if (candidateIds.length > 0) {
+    const profilesById = await fetchProfilesByIds(candidateIds);
+
+    return sortProfiles(
+      candidateIds.map((id) => ({
+        id,
+        full_name: profilesById[id]?.full_name || null,
+        username: profilesById[id]?.username || null,
+      })),
+    );
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, full_name, username, avatar_url");
 
   if (error) throw error;
 
-  const uniqueIds = [...new Set((data || []).map((item) => item.user_id))];
-  const profilesById = await fetchProfilesByIds(uniqueIds);
-
-  return sortProfiles(
-    uniqueIds.map((id) => ({
-      id,
-      full_name: profilesById[id]?.full_name || null,
-      username: profilesById[id]?.username || null,
-    })),
-  );
+  return sortProfiles((data || []) as ProfileLookup[]);
 }
 
 export async function fetchChannelOptions(statuses?: Enums<"channel_status">[]) {
@@ -147,7 +194,7 @@ export async function fetchChannelOptions(statuses?: Enums<"channel_status">[]) 
 export async function fetchAdminContentOptions(types?: Enums<"content_type">[]) {
   let query = supabase
     .from("contents")
-    .select("id, title, type, channel_id, content_maker_channels(channel_name, owner_id)")
+    .select("id, title, type, channel_id")
     .is("deleted_at", null)
     .order("title");
 
@@ -159,19 +206,24 @@ export async function fetchAdminContentOptions(types?: Enums<"content_type">[]) 
   if (error) throw error;
 
   const rows = (data || []) as ContentRow[];
+  const channelsById = await fetchChannelsByIds(rows.map((content) => content.channel_id));
   const profilesById = await fetchProfilesByIds(
-    rows.map((content) => content.content_maker_channels?.owner_id),
+    rows.map((content) => {
+      const channelId = content.channel_id;
+      return channelId ? channelsById[channelId]?.owner_id || null : null;
+    }),
   );
 
   return rows.map((content) => {
-    const ownerId = content.content_maker_channels?.owner_id || null;
+    const channel = content.channel_id ? channelsById[content.channel_id] || null : null;
+    const ownerId = channel?.owner_id || null;
 
     return {
       id: content.id,
       title: content.title,
       type: content.type,
       channel_id: content.channel_id,
-      channel_name: content.content_maker_channels?.channel_name || null,
+      channel_name: channel?.channel_name || null,
       owner_id: ownerId,
       owner_name: ownerId ? profilesById[ownerId]?.full_name || null : null,
       owner_username: ownerId ? profilesById[ownerId]?.username || null : null,

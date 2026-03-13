@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Enums, Tables } from "@/integrations/supabase/types";
+import { fetchChannelsByIds } from "@/lib/adminLookups";
 
 export type CMChannelOption = Pick<
   Tables<"content_maker_channels">,
@@ -40,15 +41,24 @@ export async function fetchOwnedContents(channelIds: string[]) {
 
   const { data, error } = await supabase
     .from("contents")
-    .select(
-      "*, content_maker_channels(channel_name)",
-    )
+    .select("*")
     .in("channel_id", channelIds)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return (data || []) as CMContentRow[];
+
+  const rows = (data || []) as Tables<"contents">[];
+  const channelsById = await fetchChannelsByIds(rows.map((content) => content.channel_id));
+
+  return rows.map((content) => ({
+    ...content,
+    content_maker_channels: content.channel_id
+      ? {
+          channel_name: channelsById[content.channel_id]?.channel_name || null,
+        }
+      : null,
+  })) as CMContentRow[];
 }
 
 export async function fetchOwnedSeasons(contentIds: string[]) {
@@ -69,13 +79,41 @@ export async function fetchOwnedEpisodes(channelIds: string[]) {
 
   const { data, error } = await supabase
     .from("episodes")
-    .select("*, contents(title), seasons(season_number)")
+    .select("*")
     .in("channel_id", channelIds)
     .order("created_at", { ascending: false })
     .limit(200);
 
   if (error) throw error;
-  return (data || []) as CMEpisodeRow[];
+
+  const rows = (data || []) as Tables<"episodes">[];
+  const contentIds = [...new Set(rows.map((episode) => episode.content_id).filter(Boolean))];
+  const seasonIds = [...new Set(rows.map((episode) => episode.season_id).filter(Boolean) as string[])];
+
+  const [contentsRes, seasonsRes] = await Promise.all([
+    contentIds.length > 0
+      ? supabase.from("contents").select("id, title").in("id", contentIds)
+      : Promise.resolve({ data: [], error: null }),
+    seasonIds.length > 0
+      ? supabase.from("seasons").select("id, season_number").in("id", seasonIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (contentsRes.error) throw contentsRes.error;
+  if (seasonsRes.error) throw seasonsRes.error;
+
+  const contentsById = new Map(
+    (contentsRes.data || []).map((content) => [content.id, { title: content.title }]),
+  );
+  const seasonsById = new Map(
+    (seasonsRes.data || []).map((season) => [season.id, { season_number: season.season_number }]),
+  );
+
+  return rows.map((episode) => ({
+    ...episode,
+    contents: contentsById.get(episode.content_id) || null,
+    seasons: episode.season_id ? seasonsById.get(episode.season_id) || null : null,
+  })) as CMEpisodeRow[];
 }
 
 export async function fetchOwnedRequests(userId: string) {

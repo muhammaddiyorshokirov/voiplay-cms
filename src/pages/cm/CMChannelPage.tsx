@@ -8,29 +8,51 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Save } from "lucide-react";
+import type { Tables } from "@/integrations/supabase/types";
+
+type Channel = Tables<"content_maker_channels">;
 
 export default function CMChannelPage() {
   const { user } = useAuth();
-  const [channel, setChannel] = useState<any>(null);
+  const [channel, setChannel] = useState<Channel | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ channel_name: "", channel_description: "", telegram_url: "", instagram_url: "", youtube_url: "" });
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("content_maker_channels").select("*").eq("owner_id", user.id).limit(1).single().then(({ data }) => {
-      if (data) {
-        setChannel(data);
+
+    const loadChannel = async () => {
+      const { data, error } = await supabase
+        .from("content_maker_channels")
+        .select("*")
+        .eq("owner_id", user.id)
+        .order("created_at", { ascending: true })
+        .limit(1);
+
+      if (error) {
+        toast.error(error.message);
+        setLoading(false);
+        return;
+      }
+
+      const firstChannel = data?.[0] || null;
+      setChannel(firstChannel);
+
+      if (firstChannel) {
         setForm({
-          channel_name: data.channel_name || "",
-          channel_description: data.channel_description || "",
-          telegram_url: data.telegram_url || "",
-          instagram_url: data.instagram_url || "",
-          youtube_url: data.youtube_url || "",
+          channel_name: firstChannel.channel_name || "",
+          channel_description: firstChannel.channel_description || "",
+          telegram_url: firstChannel.telegram_url || "",
+          instagram_url: firstChannel.instagram_url || "",
+          youtube_url: firstChannel.youtube_url || "",
         });
       }
+
       setLoading(false);
-    });
+    };
+
+    void loadChannel();
   }, [user]);
 
   const handleSave = async () => {
