@@ -31,11 +31,16 @@ import {
   gigabytesToBytes,
   syncStorageAssetsByUrls,
 } from "@/lib/storageAssets";
+import {
+  fetchContentMakerOptions,
+  fetchProfilesByIds,
+  getProfileDisplayName,
+} from "@/lib/adminLookups";
 
 type Channel = Tables<"content_maker_channels">;
-type ChannelRow = Channel & { profiles?: { full_name: string | null } | null };
-type ContentMakerRoleRow = {
-  profiles?: { id: string; full_name: string | null } | null;
+type ChannelRow = Channel & {
+  owner_name: string | null;
+  owner_username: string | null;
 };
 
 function toStorageInputValue(bytes?: number | null) {
@@ -53,7 +58,7 @@ function getUsagePercent(usedBytes?: number | null, maxBytes?: number | null) {
 export default function ChannelsPage() {
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [contentMakers, setContentMakers] = useState<
-    { id: string; full_name: string | null }[]
+    { id: string; full_name: string | null; username: string | null }[]
   >([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -74,22 +79,41 @@ export default function ChannelsPage() {
 
   const fetchData = async () => {
     setLoading(true);
-    const [chRes, cmRes] = await Promise.all([
-      supabase
-        .from("content_maker_channels")
-        .select("*, profiles:owner_id(full_name)")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("user_roles")
-        .select("user_id, profiles:user_id(id, full_name)")
-        .eq("role", "content_maker"),
-    ]);
-    setChannels((chRes.data as ChannelRow[]) || []);
-    const makers = ((cmRes.data as ContentMakerRoleRow[]) || [])
-      .map((role) => role.profiles)
-      .filter(Boolean) as { id: string; full_name: string | null }[];
-    setContentMakers(makers);
-    setLoading(false);
+    try {
+      const [chRes, makers] = await Promise.all([
+        supabase
+          .from("content_maker_channels")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        fetchContentMakerOptions(),
+      ]);
+
+      if (chRes.error) throw chRes.error;
+
+      const rawChannels = (chRes.data || []) as Channel[];
+      const profilesById = await fetchProfilesByIds(
+        rawChannels.map((channel) => channel.owner_id),
+      );
+
+      setChannels(
+        rawChannels.map((channel) => ({
+          ...channel,
+          owner_name: profilesById[channel.owner_id]?.full_name || null,
+          owner_username: profilesById[channel.owner_id]?.username || null,
+        })),
+      );
+      setContentMakers(makers);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Kanallarni yuklashda xatolik yuz berdi",
+      );
+      setChannels([]);
+      setContentMakers([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -268,7 +292,11 @@ export default function ChannelsPage() {
                     {ch.channel_name || "Nomsiz"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {ch.profiles?.full_name || "—"}
+                    {getProfileDisplayName({
+                      id: ch.owner_id,
+                      full_name: ch.owner_name,
+                      username: ch.owner_username,
+                    })}
                   </p>
                 </div>
               </div>
@@ -383,7 +411,7 @@ export default function ChannelsPage() {
                 <SelectContent className="bg-card border-border">
                   {contentMakers.map((cm) => (
                     <SelectItem key={cm.id} value={cm.id}>
-                      {cm.full_name || cm.id}
+                      {getProfileDisplayName(cm)}
                     </SelectItem>
                   ))}
                 </SelectContent>

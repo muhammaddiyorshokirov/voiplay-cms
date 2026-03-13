@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatBytes, isImageAsset, isVideoAsset } from "@/lib/storageAssets";
+import { fetchProfilesByIds } from "@/lib/adminLookups";
 
 interface StorageAssetPickerProps {
   title: string;
@@ -75,10 +76,7 @@ interface StorageAssetRow {
   content_maker_channels?: {
     id: string;
     channel_name: string | null;
-    profiles?: {
-      full_name: string | null;
-      username: string | null;
-    } | null;
+    owner_id: string | null;
   } | null;
 }
 
@@ -154,10 +152,7 @@ export function StorageAssetPicker({
             content_maker_channels (
               id,
               channel_name,
-              profiles:owner_id (
-                full_name,
-                username
-              )
+              owner_id
             )
           `,
         )
@@ -178,33 +173,42 @@ export function StorageAssetPicker({
 
       const { data } = await query;
 
-      const mappedAssets = ((data as StorageAssetRow[]) || []).map((item) => ({
-        id: item.id,
-        public_url: item.public_url,
-        object_key: item.object_key,
-        file_name: item.file_name,
-        folder: item.folder,
-        asset_kind: item.asset_kind,
-        mime_type: item.mime_type,
-        size_bytes: item.size_bytes,
-        owner_user_id: item.owner_user_id,
-        content_maker_channel_id: item.content_maker_channel_id,
-        created_at: item.created_at,
-        content: item.contents || null,
-        episode: item.episodes || null,
-        channel: item.content_maker_channels
-          ? {
-              id: item.content_maker_channels.id,
-              channel_name: item.content_maker_channels.channel_name,
-            }
-          : null,
-        owner: item.content_maker_channels?.profiles
-          ? {
-              full_name: item.content_maker_channels.profiles.full_name,
-              username: item.content_maker_channels.profiles.username,
-            }
-          : null,
-      }));
+      const rows = (data as StorageAssetRow[]) || [];
+      const profilesById = await fetchProfilesByIds(
+        rows.flatMap((item) => [item.owner_user_id, item.content_maker_channels?.owner_id]),
+      );
+
+      const mappedAssets = rows.map((item) => {
+        const ownerId = item.owner_user_id || item.content_maker_channels?.owner_id || null;
+
+        return {
+          id: item.id,
+          public_url: item.public_url,
+          object_key: item.object_key,
+          file_name: item.file_name,
+          folder: item.folder,
+          asset_kind: item.asset_kind,
+          mime_type: item.mime_type,
+          size_bytes: item.size_bytes,
+          owner_user_id: item.owner_user_id,
+          content_maker_channel_id: item.content_maker_channel_id,
+          created_at: item.created_at,
+          content: item.contents || null,
+          episode: item.episodes || null,
+          channel: item.content_maker_channels
+            ? {
+                id: item.content_maker_channels.id,
+                channel_name: item.content_maker_channels.channel_name,
+              }
+            : null,
+          owner: ownerId
+            ? {
+                full_name: profilesById[ownerId]?.full_name || null,
+                username: profilesById[ownerId]?.username || null,
+              }
+            : null,
+        };
+      });
 
       mappedAssets.sort((left, right) => {
         const leftSelected = left.public_url === selectedUrl ? 1 : 0;

@@ -10,12 +10,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
+import {
+  fetchAdminContentOptions,
+  getProfileDisplayName,
+  type AdminContentOption,
+} from "@/lib/adminLookups";
 
 type Season = Tables<"seasons"> & { contents?: { title: string } | null };
 
 export default function SeasonsPage() {
   const [seasons, setSeasons] = useState<Season[]>([]);
-  const [contents, setContents] = useState<{ id: string; title: string }[]>([]);
+  const [contents, setContents] = useState<AdminContentOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Season | null>(null);
@@ -26,22 +31,46 @@ export default function SeasonsPage() {
 
   const fetchAll = async () => {
     setLoading(true);
-    const [s, c] = await Promise.all([
-      supabase.from("seasons").select("*, contents(title)").order("season_number"),
-      supabase.from("contents").select("id, title").is("deleted_at", null).order("title"),
-    ]);
-    setSeasons((s.data || []) as Season[]);
-    setContents(c.data || []);
-    setLoading(false);
+    try {
+      const [seasonsRes, contentOptions] = await Promise.all([
+        supabase.from("seasons").select("*, contents(title)").order("season_number"),
+        fetchAdminContentOptions(["anime", "serial"]),
+      ]);
+
+      if (seasonsRes.error) throw seasonsRes.error;
+
+      setSeasons((seasonsRes.data || []) as Season[]);
+      setContents(contentOptions);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Fasllar sahifasini yuklashda xatolik yuz berdi",
+      );
+      setSeasons([]);
+      setContents([]);
+    } finally {
+      setLoading(false);
+    }
   };
-  useEffect(() => { fetchAll(); }, []);
+
+  useEffect(() => {
+    void fetchAll();
+  }, []);
 
   const openNew = () => { setEditing(null); setContentId(""); setSeasonNumber(1); setTitle(""); setDescription(""); setDialogOpen(true); };
   const openEdit = (s: Season) => { setEditing(s); setContentId(s.content_id); setSeasonNumber(s.season_number); setTitle(s.title || ""); setDescription(s.description || ""); setDialogOpen(true); };
 
   const handleSave = async () => {
     if (!contentId) { toast.error("Kontent tanlanishi shart"); return; }
-    const payload = { content_id: contentId, season_number: seasonNumber, title: title || null, description: description || null };
+    const selectedContent = contents.find((content) => content.id === contentId) || null;
+    const payload = {
+      content_id: contentId,
+      channel_id: selectedContent?.channel_id || null,
+      season_number: seasonNumber,
+      title: title || null,
+      description: description || null,
+    };
     if (editing) {
       const { error } = await supabase.from("seasons").update(payload).eq("id", editing.id);
       if (error) { toast.error(error.message); return; }
@@ -82,7 +111,19 @@ export default function SeasonsPage() {
               <Select value={contentId} onValueChange={setContentId}>
                 <SelectTrigger className="bg-background border-border"><SelectValue placeholder="Tanlang" /></SelectTrigger>
                 <SelectContent className="bg-card border-border max-h-60">
-                  {contents.map((c) => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}
+                  {contents.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.title}
+                      {c.channel_name ? ` · ${c.channel_name}` : ""}
+                      {c.owner_id
+                        ? ` · ${getProfileDisplayName({
+                            id: c.owner_id,
+                            full_name: c.owner_name,
+                            username: c.owner_username,
+                          })}`
+                        : ""}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

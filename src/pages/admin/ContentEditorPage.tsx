@@ -14,15 +14,14 @@ import { toast } from "sonner";
 import { Save, Trash2, ArrowLeft } from "lucide-react";
 import type { Tables, TablesInsert, Enums } from "@/integrations/supabase/types";
 import { syncStorageAssetsByUrls } from "@/lib/storageAssets";
+import {
+  fetchChannelOptions,
+  getProfileDisplayName,
+  type ChannelOption,
+} from "@/lib/adminLookups";
 
 type Content = Tables<"contents">;
 type Genre = Tables<"genres">;
-type ChannelRow = {
-  id: string;
-  owner_id: string;
-  channel_name: string | null;
-  profiles?: { full_name: string | null } | null;
-};
 type UploadLimitSettings = { max_video_mb: number; max_image_mb: number };
 const defaultUploadLimits: UploadLimitSettings = { max_video_mb: 350, max_image_mb: 5 };
 
@@ -39,7 +38,7 @@ export default function ContentEditorPage() {
   const [saving, setSaving] = useState(false);
   const [genres, setGenres] = useState<Genre[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
-  const [channels, setChannels] = useState<{ id: string; channel_name: string | null; owner_id: string; owner_name: string | null }[]>([]);
+  const [channels, setChannels] = useState<ChannelOption[]>([]);
   const [uploadLimits, setUploadLimits] = useState(defaultUploadLimits);
 
   const [form, setForm] = useState<Partial<TablesInsert<"contents">>>({
@@ -55,31 +54,50 @@ export default function ContentEditorPage() {
 
   useEffect(() => {
     const init = async () => {
-      const [genresRes, channelsRes, settingsRes] = await Promise.all([
-        supabase.from("genres").select("*").order("name"),
-        supabase.from("content_maker_channels").select("id, owner_id, channel_name, profiles:owner_id(full_name)").eq("status", "active").order("channel_name"),
-        supabase.from("app_settings").select("value").eq("key", "upload_limits").single(),
-      ]);
-      setGenres(genresRes.data || []);
-      setChannels(((channelsRes.data as ChannelRow[]) || []).map((ch) => ({
-        id: ch.id,
-        channel_name: ch.channel_name,
-        owner_id: ch.owner_id,
-        owner_name: ch.profiles?.full_name || null,
-      })));
-      if (settingsRes.data) setUploadLimits((settingsRes.data.value as UploadLimitSettings) || defaultUploadLimits);
-
-      if (!isNew && id) {
-        const [contentRes, genresRes2] = await Promise.all([
-          supabase.from("contents").select("*").eq("id", id).single(),
-          supabase.from("content_genres").select("genre_id").eq("content_id", id),
+      try {
+        const [genresRes, channelOptions, settingsRes] = await Promise.all([
+          supabase.from("genres").select("*").order("name"),
+          fetchChannelOptions(),
+          supabase.from("app_settings").select("value").eq("key", "upload_limits").single(),
         ]);
-        if (contentRes.data) setForm(contentRes.data);
-        if (genresRes2.data) setSelectedGenres(genresRes2.data.map(g => g.genre_id));
+
+        if (genresRes.error) throw genresRes.error;
+        if (settingsRes.error && settingsRes.status !== 406) throw settingsRes.error;
+
+        setGenres(genresRes.data || []);
+        setChannels(channelOptions);
+        if (settingsRes.data) {
+          setUploadLimits(
+            (settingsRes.data.value as UploadLimitSettings) || defaultUploadLimits,
+          );
+        }
+
+        if (!isNew && id) {
+          const [contentRes, genresRes2] = await Promise.all([
+            supabase.from("contents").select("*").eq("id", id).single(),
+            supabase.from("content_genres").select("genre_id").eq("content_id", id),
+          ]);
+
+          if (contentRes.error && contentRes.status !== 406) throw contentRes.error;
+          if (genresRes2.error) throw genresRes2.error;
+
+          if (contentRes.data) setForm(contentRes.data);
+          if (genresRes2.data) {
+            setSelectedGenres(genresRes2.data.map((g) => g.genre_id));
+          }
+        }
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Kontent formasi uchun ma'lumotlar yuklanmadi",
+        );
+      } finally {
         setLoading(false);
       }
     };
-    init();
+
+    void init();
   }, [id, isNew]);
 
   const selectedChannel = channels.find((channel) => channel.id === form.channel_id) || null;
@@ -200,7 +218,11 @@ export default function ContentEditorPage() {
                 <SelectItem value="none">Kanalsiz (admin kontent)</SelectItem>
                 {channels.map(ch => (
                   <SelectItem key={ch.id} value={ch.id}>
-                    {ch.channel_name || "Nomsiz"} {ch.owner_name ? `(${ch.owner_name})` : ""}
+                    {ch.channel_name || "Nomsiz kanal"} · {getProfileDisplayName({
+                      id: ch.owner_id,
+                      full_name: ch.owner_name,
+                      username: ch.owner_username,
+                    })}
                   </SelectItem>
                 ))}
               </SelectContent>

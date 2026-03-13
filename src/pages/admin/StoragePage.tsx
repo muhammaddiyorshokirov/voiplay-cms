@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, RefreshCw, ExternalLink, HardDrive, FileImage, FileVideo, FileText } from "lucide-react";
 import { formatBytes, inferAssetKindFromPath, isImageAsset, isVideoAsset } from "@/lib/storageAssets";
+import { fetchProfilesByIds } from "@/lib/adminLookups";
 
 interface StorageBrowserAsset {
   id: string;
@@ -57,6 +58,7 @@ interface StorageFallbackRow {
   folder: string;
   asset_kind: string | null;
   size_bytes: number | null;
+  owner_user_id: string | null;
   created_at: string | null;
   updated_at: string | null;
   source_table: string | null;
@@ -68,10 +70,6 @@ interface StorageFallbackRow {
     id: string;
     channel_name: string | null;
     owner_id: string | null;
-    profiles?: {
-      full_name: string | null;
-      username: string | null;
-    } | null;
   } | null;
 }
 
@@ -131,6 +129,7 @@ export default function StoragePage() {
           folder,
           asset_kind,
           size_bytes,
+          owner_user_id,
           created_at,
           updated_at,
           source_table,
@@ -139,11 +138,7 @@ export default function StoragePage() {
           content_maker_channels (
             id,
             channel_name,
-            owner_id,
-            profiles:owner_id (
-              full_name,
-              username
-            )
+            owner_id
           ),
           contents (
             id,
@@ -164,38 +159,51 @@ export default function StoragePage() {
       setErrorMessage(error?.message || fallbackError.message);
       setAssets([]);
     } else {
-      const normalizedAssets = ((fallbackData as StorageFallbackRow[]) || []).map((item) => ({
-        id: item.id,
-        bucket_name: item.bucket_name || "default",
-        object_key: item.object_key,
-        public_url: item.public_url,
-        file_name: item.file_name,
-        file_extension: item.file_extension,
-        mime_type: item.mime_type,
-        folder: item.folder,
-        asset_kind: item.asset_kind || inferAssetKindFromPath(item.object_key, item.mime_type),
-        size_bytes: item.size_bytes,
-        created_at: item.created_at,
-        updated_at: item.updated_at,
-        source_table: item.source_table,
-        source_column: item.source_column,
-        metadata: item.metadata || {},
-        content: item.contents || null,
-        episode: item.episodes || null,
-        channel: item.content_maker_channels
-          ? {
-              id: item.content_maker_channels.id,
-              channel_name: item.content_maker_channels.channel_name,
-              owner_id: item.content_maker_channels.owner_id,
-            }
-          : null,
-        owner: item.content_maker_channels?.profiles
-          ? {
-              full_name: item.content_maker_channels.profiles.full_name,
-              username: item.content_maker_channels.profiles.username,
-            }
-          : null,
-      }));
+      const fallbackRows = (fallbackData as StorageFallbackRow[]) || [];
+      const profilesById = await fetchProfilesByIds(
+        fallbackRows.flatMap((item) => [
+          item.owner_user_id,
+          item.content_maker_channels?.owner_id,
+        ]),
+      );
+
+      const normalizedAssets = fallbackRows.map((item) => {
+        const ownerId = item.owner_user_id || item.content_maker_channels?.owner_id || null;
+
+        return {
+          id: item.id,
+          bucket_name: item.bucket_name || "default",
+          object_key: item.object_key,
+          public_url: item.public_url,
+          file_name: item.file_name,
+          file_extension: item.file_extension,
+          mime_type: item.mime_type,
+          folder: item.folder,
+          asset_kind:
+            item.asset_kind || inferAssetKindFromPath(item.object_key, item.mime_type),
+          size_bytes: item.size_bytes,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+          source_table: item.source_table,
+          source_column: item.source_column,
+          metadata: item.metadata || {},
+          content: item.contents || null,
+          episode: item.episodes || null,
+          channel: item.content_maker_channels
+            ? {
+                id: item.content_maker_channels.id,
+                channel_name: item.content_maker_channels.channel_name,
+                owner_id: item.content_maker_channels.owner_id,
+              }
+            : null,
+          owner: ownerId
+            ? {
+                full_name: profilesById[ownerId]?.full_name || null,
+                username: profilesById[ownerId]?.username || null,
+              }
+            : null,
+        };
+      });
 
       setAssets(normalizedAssets);
       setSourceMode("metadata");

@@ -22,31 +22,16 @@ import {
 } from "@/lib/mediaService";
 import type { Tables, TablesInsert, Enums } from "@/integrations/supabase/types";
 import { syncStorageAssetsByUrls } from "@/lib/storageAssets";
+import {
+  fetchAdminContentOptions,
+  getProfileDisplayName,
+  type AdminContentOption,
+} from "@/lib/adminLookups";
 
 type Episode = Tables<"episodes"> & {
   contents?: { title: string } | null;
   seasons?: { season_number: number } | null;
 };
-
-interface ContentOption {
-  id: string;
-  title: string;
-  type: Enums<"content_type"> | null;
-  channel_id: string | null;
-  channel_name: string | null;
-  owner_id: string | null;
-}
-
-interface ContentOptionRow {
-  id: string;
-  title: string;
-  type: Enums<"content_type"> | null;
-  channel_id: string | null;
-  content_maker_channels?: {
-    channel_name: string | null;
-    owner_id: string | null;
-  } | null;
-}
 
 function toDateInputValue(value?: string | null) {
   return value ? value.slice(0, 10) : "";
@@ -64,7 +49,7 @@ function isActiveMediaJob(job?: MediaJob | null) {
 
 export default function EpisodesPage() {
   const [episodes, setEpisodes] = useState<Episode[]>([]);
-  const [contents, setContents] = useState<ContentOption[]>([]);
+  const [contents, setContents] = useState<AdminContentOption[]>([]);
   const [seasons, setSeasons] = useState<{ id: string; content_id: string; season_number: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -110,35 +95,38 @@ export default function EpisodesPage() {
 
   const fetchAll = async () => {
     setLoading(true);
+    try {
+      const [episodeRes, contentOptions, seasonRes] = await Promise.all([
+        supabase
+          .from("episodes")
+          .select("*, contents(title), seasons(season_number)")
+          .order("created_at", { ascending: false })
+          .limit(200),
+        fetchAdminContentOptions(["anime", "serial"]),
+        supabase
+          .from("seasons")
+          .select("id, content_id, season_number")
+          .order("season_number"),
+      ]);
 
-    const [episodeRes, contentRes, seasonRes] = await Promise.all([
-      supabase
-        .from("episodes")
-        .select("*, contents(title), seasons(season_number)")
-        .order("created_at", { ascending: false })
-        .limit(200),
-      supabase
-        .from("contents")
-        .select("id, title, type, channel_id, content_maker_channels(channel_name, owner_id)")
-        .is("deleted_at", null)
-        .in("type", ["anime", "serial"])
-        .order("title"),
-      supabase.from("seasons").select("id, content_id, season_number").order("season_number"),
-    ]);
+      if (episodeRes.error) throw episodeRes.error;
+      if (seasonRes.error) throw seasonRes.error;
 
-    setEpisodes((episodeRes.data || []) as Episode[]);
-    setContents(
-      ((contentRes.data as ContentOptionRow[]) || []).map((item) => ({
-        id: item.id,
-        title: item.title,
-        type: item.type,
-        channel_id: item.channel_id,
-        channel_name: item.content_maker_channels?.channel_name || null,
-        owner_id: item.content_maker_channels?.owner_id || null,
-      })),
-    );
-    setSeasons(seasonRes.data || []);
-    setLoading(false);
+      setEpisodes((episodeRes.data || []) as Episode[]);
+      setContents(contentOptions);
+      setSeasons(seasonRes.data || []);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Epizodlar sahifasini yuklashda xatolik yuz berdi",
+      );
+      setEpisodes([]);
+      setContents([]);
+      setSeasons([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -438,6 +426,13 @@ export default function EpisodesPage() {
                       <SelectItem key={content.id} value={content.id}>
                         {content.title}
                         {content.channel_name ? ` · ${content.channel_name}` : ""}
+                        {content.owner_id
+                          ? ` · ${getProfileDisplayName({
+                              id: content.owner_id,
+                              full_name: content.owner_name,
+                              username: content.owner_username,
+                            })}`
+                          : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
