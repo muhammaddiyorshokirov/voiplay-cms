@@ -23,6 +23,7 @@ import SettingsPage from "@/pages/admin/SettingsPage";
 import CommentsPage from "@/pages/admin/CommentsPage";
 import PremiumPlansPage from "@/pages/admin/PremiumPlansPage";
 import SubscriptionsPage from "@/pages/admin/SubscriptionsPage";
+import ChannelsPage from "@/pages/admin/ChannelsPage";
 import CMDashboardPage from "@/pages/cm/CMDashboardPage";
 import CMContentPage from "@/pages/cm/CMContentPage";
 import CMEpisodesPage from "@/pages/cm/CMEpisodesPage";
@@ -40,7 +41,6 @@ function Spinner() {
   );
 }
 
-/** Protects admin routes - only admin role */
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, loading } = useAuth();
   if (loading) return <Spinner />;
@@ -49,17 +49,14 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/** Protects content maker routes - only content_maker role */
 function CMRoute({ children }: { children: React.ReactNode }) {
   const { user, isContentMaker, isAdmin, loading } = useAuth();
   if (loading) return <Spinner />;
   if (!user) return <Navigate to="/login" replace />;
-  // Admin can also access CM panel
   if (!isContentMaker && !isAdmin) return <Navigate to="/unauthorized" replace />;
   return <>{children}</>;
 }
 
-/** Smart home redirect based on role */
 function HomeRedirect() {
   const { user, roles, loading } = useAuth();
   if (loading) return <Spinner />;
@@ -79,7 +76,6 @@ const App = () => (
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
             <Route path="/" element={<HomeRedirect />} />
 
-            {/* Admin routes - admin only */}
             <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
               <Route index element={<DashboardPage />} />
               <Route path="content" element={<ContentListPage />} />
@@ -96,9 +92,9 @@ const App = () => (
               <Route path="comments" element={<CommentsPage />} />
               <Route path="premium-plans" element={<PremiumPlansPage />} />
               <Route path="subscriptions" element={<SubscriptionsPage />} />
+              <Route path="channels" element={<ChannelsPage />} />
             </Route>
 
-            {/* Content maker routes */}
             <Route path="/cm" element={<CMRoute><CMLayout /></CMRoute>}>
               <Route index element={<CMDashboardPage />} />
               <Route path="content" element={<CMContentPage />} />
