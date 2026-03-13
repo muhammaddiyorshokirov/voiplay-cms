@@ -15,16 +15,26 @@ export default function UsersPage() {
 
   const fetchAll = async () => {
     setLoading(true);
-    const [profilesRes, rolesRes] = await Promise.all([
-      supabase.from("profiles").select("*").order("created_at", { ascending: false }),
-      supabase.from("user_roles").select("user_id, role"),
-    ]);
-    const profiles = profilesRes.data || [];
-    const roles = rolesRes.data || [];
-    const roleMap = new Map<string, string>();
-    roles.forEach((r) => roleMap.set(r.user_id, r.role));
-    setUsers(profiles.map((p) => ({ ...p, role: roleMap.get(p.id) || "user" })));
-    setLoading(false);
+    try {
+      const [profilesRes, rolesRes] = await Promise.all([
+        supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+        supabase.from("user_roles").select("user_id, role"),
+      ]);
+
+      if (profilesRes.error) throw profilesRes.error;
+      if (rolesRes.error) throw rolesRes.error;
+
+      const profiles = Array.isArray(profilesRes.data) ? profilesRes.data : [];
+      const roles = Array.isArray(rolesRes.data) ? rolesRes.data : [];
+      const roleMap = new Map<string, string>();
+      roles.forEach((r) => roleMap.set(r.user_id, r.role));
+      setUsers(profiles.map((p) => ({ ...p, role: roleMap.get(p.id) || "user" })));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Foydalanuvchilarni yuklashda xatolik yuz berdi");
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => { fetchAll(); }, []);
 

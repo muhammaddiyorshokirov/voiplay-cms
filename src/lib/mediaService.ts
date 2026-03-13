@@ -112,6 +112,58 @@ async function mediaRequest<T>(path: string, init?: RequestInit) {
   return payload as T;
 }
 
+async function mediaUploadRequest<T>(
+  path: string,
+  formData: FormData,
+  onUploadProgress?: (progress: number) => void,
+) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error("Sessiya topilmadi");
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${mediaServiceBaseUrl}${path}`);
+    xhr.responseType = "json";
+    xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      onUploadProgress?.(Math.min(Math.round((event.loaded / event.total) * 100), 100));
+    };
+
+    xhr.onerror = () => {
+      reject(new Error("Media service tarmoq xatosi"));
+    };
+
+    xhr.onload = () => {
+      const payload =
+        xhr.response ||
+        (() => {
+          try {
+            return JSON.parse(xhr.responseText);
+          } catch {
+            return null;
+          }
+        })();
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onUploadProgress?.(100);
+        resolve(payload as T);
+        return;
+      }
+
+      reject(new Error(payload?.error || "Media service xatosi"));
+    };
+
+    xhr.send(formData);
+  });
+}
+
 export async function createMediaJob(input: {
   episodeId: string;
   contentId?: string | null;
@@ -119,6 +171,7 @@ export async function createMediaJob(input: {
   episodeNumber?: number | null;
   videoFile: File;
   subtitleFile?: File | null;
+  onUploadProgress?: (progress: number) => void;
 }) {
   const formData = new FormData();
   formData.append("episodeId", input.episodeId);
@@ -132,10 +185,11 @@ export async function createMediaJob(input: {
     formData.append("subtitle", input.subtitleFile);
   }
 
-  return mediaRequest<MediaJobDetailResponse>("/api/media-jobs", {
-    method: "POST",
-    body: formData,
-  });
+  return mediaUploadRequest<MediaJobDetailResponse>(
+    "/api/media-jobs",
+    formData,
+    input.onUploadProgress,
+  );
 }
 
 export function listMediaJobs() {

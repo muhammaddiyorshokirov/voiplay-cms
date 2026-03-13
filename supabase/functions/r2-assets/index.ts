@@ -36,7 +36,7 @@ function inferAssetKind(path: string, mimeType?: string | null) {
     return "image";
   }
 
-  if (cleanMime.startsWith("video/") || ["mp4", "webm", "mkv", "mov", "m4v"].includes(ext || "")) {
+  if (cleanMime.startsWith("video/") || ["mp4", "webm", "mkv", "mov", "m4v", "m3u8", "ts", "m4s"].includes(ext || "")) {
     return "video";
   }
 

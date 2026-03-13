@@ -21,7 +21,14 @@ import {
   type MediaJob,
 } from "@/lib/mediaService";
 import type { Tables, TablesInsert, Enums } from "@/integrations/supabase/types";
+import {
+  defaultVideoProcessingSettings,
+  fetchVideoProcessingSettings,
+  type VideoProcessingSettings,
+} from "@/lib/appSettings";
 import { syncStorageAssetsByUrls } from "@/lib/storageAssets";
+import { formatErrorMessage } from "@/lib/errorMessage";
+import { isZipFile, uploadFileToR2 } from "@/lib/r2Upload";
 import {
   fetchAdminContentOptions,
   getProfileDisplayName,
@@ -58,6 +65,11 @@ export default function EpisodesPage() {
   const [subtitleFile, setSubtitleFile] = useState<File | null>(null);
   const [mediaJob, setMediaJob] = useState<MediaJob | null>(null);
   const [mediaSubmitting, setMediaSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [videoProcessing, setVideoProcessing] = useState<VideoProcessingSettings>(
+    defaultVideoProcessingSettings,
+  );
   const terminalStatusRef = useRef<string | null>(null);
 
   const [form, setForm] = useState<Partial<TablesInsert<"episodes">>>({
@@ -96,7 +108,7 @@ export default function EpisodesPage() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [episodeRes, contentOptions, seasonRes] = await Promise.all([
+      const [episodeRes, contentOptions, seasonRes, settings] = await Promise.all([
         supabase
           .from("episodes")
           .select("*, contents(title), seasons(season_number)")
@@ -107,6 +119,7 @@ export default function EpisodesPage() {
           .from("seasons")
           .select("id, content_id, season_number")
           .order("season_number"),
+        fetchVideoProcessingSettings(),
       ]);
 
       if (episodeRes.error) throw episodeRes.error;
@@ -115,15 +128,13 @@ export default function EpisodesPage() {
       setEpisodes((episodeRes.data || []) as Episode[]);
       setContents(contentOptions);
       setSeasons(seasonRes.data || []);
+      setVideoProcessing(settings || defaultVideoProcessingSettings);
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Epizodlar sahifasini yuklashda xatolik yuz berdi",
-      );
+      toast.error(formatErrorMessage(error, "Epizodlar sahifasini yuklashda xatolik yuz berdi"));
       setEpisodes([]);
       setContents([]);
       setSeasons([]);
+      setVideoProcessing(defaultVideoProcessingSettings);
     } finally {
       setLoading(false);
     }
@@ -165,7 +176,7 @@ export default function EpisodesPage() {
         }
       } catch (error) {
         if (active) {
-          toast.error(error instanceof Error ? error.message : "Media job holatini yuklab bo'lmadi");
+          toast.error(formatErrorMessage(error, "Media job holatini yuklab bo'lmadi"));
         }
       }
     };
@@ -186,6 +197,8 @@ export default function EpisodesPage() {
     setSubtitleFile(null);
     setMediaJob(null);
     setMediaSubmitting(false);
+    setUploadProgress(null);
+    setUploadStatus(null);
     terminalStatusRef.current = null;
   };
 
@@ -255,8 +268,8 @@ export default function EpisodesPage() {
       return;
     }
 
-    if (!selectedContent?.channel_id) {
-      toast.error("Tanlangan kontent uchun kanal topilmadi");
+    if (!selectedContent) {
+      toast.error("Tanlangan kontent topilmadi");
       return;
     }
 
@@ -267,7 +280,7 @@ export default function EpisodesPage() {
 
     const payload: Partial<TablesInsert<"episodes">> = {
       ...form,
-      channel_id: selectedContent.channel_id,
+      channel_id: selectedContent.channel_id || null,
       external_id: form.external_id?.trim() || `ep-${Date.now()}`,
       title: form.title?.trim() || null,
       description: form.description?.trim() || null,
@@ -284,10 +297,20 @@ export default function EpisodesPage() {
       status: form.is_published ? "published" : (form.status as Enums<"episode_status">) || "draft",
     };
 
-    const shouldQueueMedia = Boolean(videoFile);
+    const zipVideoUpload = isZipFile(videoFile);
+    const shouldUploadZipHls = Boolean(videoFile) && zipVideoUpload;
+    const shouldQueueMedia =
+      Boolean(videoFile) && !zipVideoUpload && videoProcessing.hls_enabled;
+    const shouldUploadDirectVideo =
+      Boolean(videoFile) && !zipVideoUpload && !videoProcessing.hls_enabled;
 
     try {
       let episodeId = editing?.id || null;
+      let nextVideoUrl = payload.video_url || null;
+      let nextStreamUrl = payload.stream_url || null;
+      let nextSubtitleUrl = payload.subtitle_url || null;
+      let videoUploadedDirectly = false;
+      let subtitleUploadedDirectly = false;
 
       if (editing) {
         const { error } = await supabase.from("episodes").update(payload).eq("id", editing.id);
@@ -301,16 +324,125 @@ export default function EpisodesPage() {
 
         if (error) throw error;
         episodeId = data.id;
+        }
+
+      if (shouldUploadZipHls && episodeId) {
+        setMediaSubmitting(true);
+        setUploadStatus("HLS ZIP R2 ga yuklanmoqda");
+        setUploadProgress(0);
+
+        const uploadResult = await uploadFileToR2({
+          file: videoFile as File,
+          folder: "hls",
+          metadata: {
+            assetKind: "video",
+            channelId: selectedContent.channel_id || null,
+            channelName: selectedContent.channel_name || null,
+            contentId: payload.content_id as string,
+            contentTitle: selectedContent.title || null,
+            contentType: selectedContent.type || null,
+            episodeId,
+            episodeNumber: payload.episode_number || null,
+            ownerUserId: selectedContent.owner_id || null,
+            sourceTable: "episodes",
+            sourceColumn: "video_url",
+          },
+          onProgress: (value) => setUploadProgress(value),
+        });
+
+        nextVideoUrl = uploadResult.stream_url || uploadResult.url;
+        nextStreamUrl = nextVideoUrl;
+        videoUploadedDirectly = true;
+      }
+
+      if (shouldUploadDirectVideo && episodeId) {
+        setMediaSubmitting(true);
+        setUploadStatus("Video R2 ga to'g'ridan-to'g'ri yuklanmoqda");
+        setUploadProgress(0);
+
+        const uploadResult = await uploadFileToR2({
+          file: videoFile as File,
+          folder: "videos",
+          metadata: {
+            assetKind: "video",
+            channelId: selectedContent.channel_id || null,
+            channelName: selectedContent.channel_name || null,
+            contentId: payload.content_id as string,
+            contentTitle: selectedContent.title || null,
+            contentType: selectedContent.type || null,
+            episodeId,
+            episodeNumber: payload.episode_number || null,
+            ownerUserId: selectedContent.owner_id || null,
+            sourceTable: "episodes",
+            sourceColumn: "video_url",
+          },
+          onProgress: (value) => setUploadProgress(value),
+        });
+
+        nextVideoUrl = uploadResult.url;
+        nextStreamUrl = null;
+        videoUploadedDirectly = true;
+      }
+
+      if ((shouldUploadZipHls || shouldUploadDirectVideo) && subtitleFile && episodeId) {
+        setUploadStatus("Subtitle R2 ga yuklanmoqda");
+        setUploadProgress(0);
+
+        const subtitleResult = await uploadFileToR2({
+          file: subtitleFile,
+          folder: "subtitles",
+          metadata: {
+            assetKind: "subtitle",
+            channelId: selectedContent.channel_id || null,
+            channelName: selectedContent.channel_name || null,
+            contentId: payload.content_id as string,
+            contentTitle: selectedContent.title || null,
+            contentType: selectedContent.type || null,
+            episodeId,
+            episodeNumber: payload.episode_number || null,
+            ownerUserId: selectedContent.owner_id || null,
+            sourceTable: "episodes",
+            sourceColumn: "subtitle_url",
+          },
+          onProgress: (value) => setUploadProgress(value),
+        });
+
+        nextSubtitleUrl = subtitleResult.url;
+        subtitleUploadedDirectly = true;
+      }
+
+      if ((shouldUploadZipHls || shouldUploadDirectVideo) && episodeId) {
+        const { error: urlUpdateError } = await supabase
+          .from("episodes")
+          .update({
+            video_url: nextVideoUrl,
+            stream_url: nextStreamUrl,
+            subtitle_url: nextSubtitleUrl,
+          })
+          .eq("id", episodeId);
+
+        if (urlUpdateError) throw urlUpdateError;
+
+        setForm((current) => ({
+          ...current,
+          video_url: nextVideoUrl || "",
+          stream_url: nextStreamUrl || "",
+          subtitle_url: nextSubtitleUrl || "",
+        }));
       }
 
       await syncStorageAssetsByUrls(
         [
-          !shouldQueueMedia ? { url: payload.video_url, assetKind: "video", sourceColumn: "video_url" } : null,
+          !shouldQueueMedia && !shouldUploadZipHls && !videoUploadedDirectly
+            ? { url: nextVideoUrl, assetKind: "video", sourceColumn: "video_url" }
+            : null,
           { url: payload.thumbnail_url, assetKind: "image", sourceColumn: "thumbnail_url" },
-          !shouldQueueMedia ? { url: payload.subtitle_url, assetKind: "subtitle", sourceColumn: "subtitle_url" } : null,
+          !shouldQueueMedia && !subtitleUploadedDirectly
+            ? { url: nextSubtitleUrl, assetKind: "subtitle", sourceColumn: "subtitle_url" }
+            : null,
         ].filter(Boolean) as Array<{ url?: string | null; assetKind?: string; sourceColumn?: string | null }>,
         {
-          channelId: selectedContent.channel_id,
+          channelId: selectedContent.channel_id || null,
           contentId: payload.content_id as string,
           episodeId,
           ownerUserId: selectedContent.owner_id,
@@ -320,38 +452,70 @@ export default function EpisodesPage() {
 
       if (shouldQueueMedia && episodeId) {
         setMediaSubmitting(true);
+        setUploadStatus("Video media service'ga yuborilmoqda");
+        setUploadProgress(0);
         const response = await createMediaJob({
           episodeId,
           contentId: payload.content_id as string,
-          channelId: selectedContent.channel_id,
+          channelId: selectedContent.channel_id || null,
           episodeNumber: Number(payload.episode_number),
           videoFile: videoFile as File,
           subtitleFile,
+          onUploadProgress: (value) => setUploadProgress(value),
         });
 
         setMediaJob(response.job);
         terminalStatusRef.current = response.job.status;
         setMediaSubmitting(false);
+        setUploadProgress(null);
+        setUploadStatus(null);
         toast.success("Epizod saqlandi va media navbatga yuborildi");
         await fetchAll();
         return;
       }
 
+      setMediaSubmitting(false);
+      setUploadProgress(null);
+      setUploadStatus(null);
       toast.success("Epizod saqlandi");
       setDialogOpen(false);
       resetMediaState();
       await fetchAll();
     } catch (error) {
       setMediaSubmitting(false);
-      toast.error(error instanceof Error ? error.message : "Saqlashda xatolik yuz berdi");
+      setUploadProgress(null);
+      setUploadStatus(null);
+      toast.error(formatErrorMessage(error, "Epizodni saqlashda xatolik yuz berdi"));
     }
   };
+
+  const videoModeDescription = videoProcessing.hls_enabled
+    ? "Oddiy video media service orqali HLS formatga o'tkaziladi. ZIP ichida `m3u8` bo'lsa baribir to'g'ridan-to'g'ri HLS sifatida yuklanadi."
+    : "HLS o'chirilgan: oddiy video to'g'ridan-to'g'ri R2 ga yuklanadi. ZIP ichida `m3u8` bo'lsa u baribir HLS sifatida qabul qilinadi.";
+
+  const streamPlaceholder = videoProcessing.hls_enabled
+    ? "Media service yoki HLS ZIP yuklangach avtomatik to'ldiriladi"
+    : "Direct video uploadda bo'sh qoladi, faqat HLS ZIP yoki tayyor m3u8 bo'lsa to'ldiriladi";
+
+  const streamHelperText = videoProcessing.hls_enabled
+    ? "Oddiy video media service orqali qayta ishlanadi, `.zip` bo'lsa ichidan `m3u8` topilib `stream_url` ga yoziladi."
+    : "HLS o'chirilgan: oddiy video to'g'ridan-to'g'ri R2 ga yuklanadi. Faqat `.zip` ichidan `m3u8` topilsa yoki tayyor `.m3u8` tanlansa `stream_url` to'ldiriladi.";
+
+  const saveButtonLabel = mediaSubmitting
+    ? "Yuborilmoqda..."
+    : videoFile
+      ? isZipFile(videoFile)
+        ? "Saqlash va HLS yuklash"
+        : videoProcessing.hls_enabled
+          ? "Saqlash va navbatga yuborish"
+          : "Saqlash va to'g'ridan-to'g'ri yuklash"
+      : "Saqlash";
 
   const handleDelete = async (id: string) => {
     if (!confirm("O'chirmoqchimisiz?")) return;
     const { error } = await supabase.from("episodes").delete().eq("id", id);
     if (error) {
-      toast.error(error.message);
+      toast.error(formatErrorMessage(error, "Epizodni o'chirishda xatolik yuz berdi"));
       return;
     }
     toast.success("Epizod o'chirildi");
@@ -534,6 +698,9 @@ export default function EpisodesPage() {
               currentStreamUrl={form.stream_url || ""}
               job={mediaJob}
               uploading={mediaSubmitting}
+              uploadProgress={uploadProgress}
+              uploadStatus={uploadStatus}
+              videoModeDescription={videoModeDescription}
               onVideoFileChange={setVideoFile}
               onSubtitleFileChange={setSubtitleFile}
             />
@@ -574,10 +741,43 @@ export default function EpisodesPage() {
 
               <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground">Stream URL</Label>
-                <Input value={form.stream_url || ""} readOnly className="border-border bg-background" placeholder="Media service tugagach avtomatik to'ldiriladi" />
+                <Input value={form.stream_url || ""} readOnly className="border-border bg-background" placeholder={streamPlaceholder} />
                 <p className="text-xs text-muted-foreground">
-                  Video tanlasangiz, HLS `stream_url` media service yakunlangach avtomatik yoziladi.
+                  {streamHelperText}
                 </p>
+                <StorageAssetPicker
+                  title="Oldingi video faylni tanlash"
+                  selectedUrl={form.video_url || ""}
+                  assetKinds={["video"]}
+                  ownerUserId={selectedContent?.owner_id || null}
+                  channelId={selectedContent?.channel_id || null}
+                  buttonLabel="Oldingi video URL ni tanlash"
+                  onSelect={(asset) =>
+                    setForm((current) => {
+                      const nextUrl = asset.public_url || "";
+                      const isHls = nextUrl.toLowerCase().includes(".m3u8");
+                      return {
+                        ...current,
+                        video_url: nextUrl,
+                        stream_url: isHls ? nextUrl : "",
+                      };
+                    })
+                  }
+                />
+                <StorageAssetPicker
+                  title="Oldingi subtitle faylini tanlash"
+                  selectedUrl={form.subtitle_url || ""}
+                  assetKinds={["subtitle"]}
+                  ownerUserId={selectedContent?.owner_id || null}
+                  channelId={selectedContent?.channel_id || null}
+                  buttonLabel="Oldingi subtitle URL ni tanlash"
+                  onSelect={(asset) =>
+                    setForm((current) => ({
+                      ...current,
+                      subtitle_url: asset.public_url || "",
+                    }))
+                  }
+                />
               </div>
             </div>
 
@@ -596,7 +796,7 @@ export default function EpisodesPage() {
             </div>
 
             <Button variant="gold" className="w-full" onClick={() => void handleSave()} disabled={mediaSubmitting}>
-              {mediaSubmitting ? "Yuborilmoqda..." : videoFile ? "Saqlash va navbatga yuborish" : "Saqlash"}
+              {saveButtonLabel}
             </Button>
           </div>
         </DialogContent>

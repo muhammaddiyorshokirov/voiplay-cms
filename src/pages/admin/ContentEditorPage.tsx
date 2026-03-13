@@ -13,6 +13,11 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Save, Trash2, ArrowLeft } from "lucide-react";
 import type { Tables, TablesInsert, Enums } from "@/integrations/supabase/types";
+import {
+  defaultUploadLimits,
+  fetchUploadLimitSettings,
+  type UploadLimitSettings,
+} from "@/lib/appSettings";
 import { syncStorageAssetsByUrls } from "@/lib/storageAssets";
 import {
   fetchChannelOptions,
@@ -22,8 +27,6 @@ import {
 
 type Content = Tables<"contents">;
 type Genre = Tables<"genres">;
-type UploadLimitSettings = { max_video_mb: number; max_image_mb: number };
-const defaultUploadLimits: UploadLimitSettings = { max_video_mb: 350, max_image_mb: 5 };
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -58,19 +61,14 @@ export default function ContentEditorPage() {
         const [genresRes, channelOptions, settingsRes] = await Promise.all([
           supabase.from("genres").select("*").order("name"),
           fetchChannelOptions(),
-          supabase.from("app_settings").select("value").eq("key", "upload_limits").single(),
+          fetchUploadLimitSettings(),
         ]);
 
         if (genresRes.error) throw genresRes.error;
-        if (settingsRes.error && settingsRes.status !== 406) throw settingsRes.error;
 
         setGenres(genresRes.data || []);
         setChannels(channelOptions);
-        if (settingsRes.data) {
-          setUploadLimits(
-            (settingsRes.data.value as UploadLimitSettings) || defaultUploadLimits,
-          );
-        }
+        setUploadLimits(settingsRes || defaultUploadLimits);
 
         if (!isNew && id) {
           const [contentRes, genresRes2] = await Promise.all([

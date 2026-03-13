@@ -33,6 +33,13 @@ import {
   getMediaJob,
   type MediaJob,
 } from "@/lib/mediaService";
+import {
+  defaultVideoProcessingSettings,
+  fetchVideoProcessingSettings,
+  type VideoProcessingSettings,
+} from "@/lib/appSettings";
+import { formatErrorMessage } from "@/lib/errorMessage";
+import { isZipFile, uploadFileToR2 } from "@/lib/r2Upload";
 import { syncStorageAssetsByUrls } from "@/lib/storageAssets";
 import {
   fetchOwnedChannels,
@@ -74,6 +81,11 @@ export default function CMEpisodesPage() {
   const [subtitleFile, setSubtitleFile] = useState<File | null>(null);
   const [mediaJob, setMediaJob] = useState<MediaJob | null>(null);
   const [mediaSubmitting, setMediaSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [videoProcessing, setVideoProcessing] = useState<VideoProcessingSettings>(
+    defaultVideoProcessingSettings,
+  );
   const terminalStatusRef = useRef<string | null>(null);
 
   const [form, setForm] = useState<Partial<TablesInsert<"episodes">>>({
@@ -118,23 +130,22 @@ export default function CMEpisodesPage() {
       const channelIds = channels.map((channel) => channel.id);
       const ownedContents = await fetchOwnedContents(channelIds);
       const contentIds = ownedContents.map((content) => content.id);
-      const [ownedSeasons, ownedEpisodes] = await Promise.all([
+      const [ownedSeasons, ownedEpisodes, settings] = await Promise.all([
         fetchOwnedSeasons(contentIds),
         fetchOwnedEpisodes(channelIds),
+        fetchVideoProcessingSettings(),
       ]);
 
       setContents(ownedContents);
       setSeasons(ownedSeasons);
       setEpisodes(ownedEpisodes);
+      setVideoProcessing(settings || defaultVideoProcessingSettings);
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Epizodlar sahifasini yuklab bo'lmadi",
-      );
+      toast.error(formatErrorMessage(error, "Epizodlar sahifasini yuklab bo'lmadi"));
       setContents([]);
       setSeasons([]);
       setEpisodes([]);
+      setVideoProcessing(defaultVideoProcessingSettings);
     } finally {
       setLoading(false);
     }
@@ -185,11 +196,7 @@ export default function CMEpisodesPage() {
         }
       } catch (error) {
         if (active) {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : "Media job holatini tekshirib bo'lmadi",
-          );
+          toast.error(formatErrorMessage(error, "Media job holatini tekshirib bo'lmadi"));
         }
       }
     };
@@ -210,6 +217,8 @@ export default function CMEpisodesPage() {
     setSubtitleFile(null);
     setMediaJob(null);
     setMediaSubmitting(false);
+    setUploadProgress(null);
+    setUploadStatus(null);
     terminalStatusRef.current = null;
   };
 
@@ -315,10 +324,20 @@ export default function CMEpisodesPage() {
           : ((form.status as Enums<"episode_status">) || "draft"),
     };
 
-    const shouldQueueMedia = Boolean(videoFile);
+    const zipVideoUpload = isZipFile(videoFile);
+    const shouldUploadZipHls = Boolean(videoFile) && zipVideoUpload;
+    const shouldQueueMedia =
+      Boolean(videoFile) && !zipVideoUpload && videoProcessing.hls_enabled;
+    const shouldUploadDirectVideo =
+      Boolean(videoFile) && !zipVideoUpload && !videoProcessing.hls_enabled;
 
     try {
       let episodeId = editing?.id || null;
+      let nextVideoUrl = payload.video_url || null;
+      let nextStreamUrl = payload.stream_url || null;
+      let nextSubtitleUrl = payload.subtitle_url || null;
+      let videoUploadedDirectly = false;
+      let subtitleUploadedDirectly = false;
 
       if (editing) {
         const { error } = await supabase
@@ -336,19 +355,125 @@ export default function CMEpisodesPage() {
         episodeId = data.id;
       }
 
+      if (shouldUploadZipHls && episodeId) {
+        setMediaSubmitting(true);
+        setUploadStatus("HLS ZIP R2 ga yuklanmoqda");
+        setUploadProgress(0);
+
+        const uploadResult = await uploadFileToR2({
+          file: videoFile as File,
+          folder: "hls",
+          metadata: {
+            assetKind: "video",
+            channelId: selectedContent.channel_id,
+            channelName: selectedContent.content_maker_channels?.channel_name || null,
+            contentId: selectedContent.id,
+            contentTitle: selectedContent.title || null,
+            contentType: selectedContent.type || null,
+            episodeId,
+            episodeNumber: payload.episode_number || null,
+            ownerUserId: user?.id || null,
+            sourceTable: "episodes",
+            sourceColumn: "video_url",
+          },
+          onProgress: (value) => setUploadProgress(value),
+        });
+
+        nextVideoUrl = uploadResult.stream_url || uploadResult.url;
+        nextStreamUrl = nextVideoUrl;
+        videoUploadedDirectly = true;
+      }
+
+      if (shouldUploadDirectVideo && episodeId) {
+        setMediaSubmitting(true);
+        setUploadStatus("Video R2 ga to'g'ridan-to'g'ri yuklanmoqda");
+        setUploadProgress(0);
+
+        const uploadResult = await uploadFileToR2({
+          file: videoFile as File,
+          folder: "videos",
+          metadata: {
+            assetKind: "video",
+            channelId: selectedContent.channel_id,
+            channelName:
+              selectedContent.content_maker_channels?.channel_name || null,
+            contentId: selectedContent.id,
+            contentTitle: selectedContent.title || null,
+            contentType: selectedContent.type || null,
+            episodeId,
+            episodeNumber: payload.episode_number || null,
+            ownerUserId: user?.id || null,
+            sourceTable: "episodes",
+            sourceColumn: "video_url",
+          },
+          onProgress: (value) => setUploadProgress(value),
+        });
+
+        nextVideoUrl = uploadResult.url;
+        nextStreamUrl = null;
+        videoUploadedDirectly = true;
+      }
+
+      if ((shouldUploadZipHls || shouldUploadDirectVideo) && subtitleFile && episodeId) {
+        setUploadStatus("Subtitle R2 ga yuklanmoqda");
+        setUploadProgress(0);
+
+        const subtitleResult = await uploadFileToR2({
+          file: subtitleFile,
+          folder: "subtitles",
+          metadata: {
+            assetKind: "subtitle",
+            channelId: selectedContent.channel_id,
+            channelName: selectedContent.content_maker_channels?.channel_name || null,
+            contentId: selectedContent.id,
+            contentTitle: selectedContent.title || null,
+            contentType: selectedContent.type || null,
+            episodeId,
+            episodeNumber: payload.episode_number || null,
+            ownerUserId: user?.id || null,
+            sourceTable: "episodes",
+            sourceColumn: "subtitle_url",
+          },
+          onProgress: (value) => setUploadProgress(value),
+        });
+
+        nextSubtitleUrl = subtitleResult.url;
+        subtitleUploadedDirectly = true;
+      }
+
+      if ((shouldUploadZipHls || shouldUploadDirectVideo) && episodeId) {
+        const { error: urlUpdateError } = await supabase
+          .from("episodes")
+          .update({
+            video_url: nextVideoUrl,
+            stream_url: nextStreamUrl,
+            subtitle_url: nextSubtitleUrl,
+          })
+          .eq("id", episodeId);
+
+        if (urlUpdateError) throw urlUpdateError;
+
+        setForm((current) => ({
+          ...current,
+          video_url: nextVideoUrl || "",
+          stream_url: nextStreamUrl || "",
+          subtitle_url: nextSubtitleUrl || "",
+        }));
+      }
+
       await syncStorageAssetsByUrls(
         [
-          !shouldQueueMedia
-            ? { url: payload.video_url, assetKind: "video", sourceColumn: "video_url" }
+          !shouldQueueMedia && !shouldUploadZipHls && !videoUploadedDirectly
+            ? { url: nextVideoUrl, assetKind: "video", sourceColumn: "video_url" }
             : null,
           {
             url: payload.thumbnail_url,
             assetKind: "image",
             sourceColumn: "thumbnail_url",
           },
-          !shouldQueueMedia
+          !shouldQueueMedia && !subtitleUploadedDirectly
             ? {
-                url: payload.subtitle_url,
+                url: nextSubtitleUrl,
                 assetKind: "subtitle",
                 sourceColumn: "subtitle_url",
               }
@@ -369,6 +494,8 @@ export default function CMEpisodesPage() {
 
       if (shouldQueueMedia && episodeId) {
         setMediaSubmitting(true);
+        setUploadStatus("Video media service'ga yuborilmoqda");
+        setUploadProgress(0);
         const response = await createMediaJob({
           episodeId,
           contentId: selectedContent.id,
@@ -376,36 +503,62 @@ export default function CMEpisodesPage() {
           episodeNumber: Number(payload.episode_number),
           videoFile: videoFile as File,
           subtitleFile,
+          onUploadProgress: (value) => setUploadProgress(value),
         });
 
         setMediaJob(response.job);
         terminalStatusRef.current = response.job.status;
         setMediaSubmitting(false);
+        setUploadProgress(null);
+        setUploadStatus(null);
         toast.success("Epizod saqlandi va media navbatiga yuborildi");
         await fetchData();
         return;
       }
 
+      setMediaSubmitting(false);
+      setUploadProgress(null);
+      setUploadStatus(null);
       toast.success("Epizod saqlandi");
       setDialogOpen(false);
       resetMediaState();
       await fetchData();
     } catch (error) {
       setMediaSubmitting(false);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Epizodni saqlab bo'lmadi",
-      );
+      setUploadProgress(null);
+      setUploadStatus(null);
+      toast.error(formatErrorMessage(error, "Epizodni saqlab bo'lmadi"));
     }
   };
+
+  const videoModeDescription = videoProcessing.hls_enabled
+    ? "Oddiy video media service orqali HLS formatga o'tkaziladi. ZIP ichida `m3u8` bo'lsa baribir to'g'ridan-to'g'ri HLS sifatida yuklanadi."
+    : "HLS o'chirilgan: oddiy video to'g'ridan-to'g'ri R2 ga yuklanadi. ZIP ichida `m3u8` bo'lsa u baribir HLS sifatida qabul qilinadi.";
+
+  const streamPlaceholder = videoProcessing.hls_enabled
+    ? "Media job yoki HLS ZIP yuklangach avtomatik to'ldiriladi"
+    : "Direct video uploadda bo'sh qoladi, faqat HLS ZIP yoki tayyor m3u8 bo'lsa to'ldiriladi";
+
+  const streamHelperText = videoProcessing.hls_enabled
+    ? "Oddiy video media service orqali qayta ishlanadi, `.zip` bo'lsa ichidan `m3u8` topilib `stream_url` ga yoziladi."
+    : "HLS o'chirilgan: oddiy video to'g'ridan-to'g'ri R2 ga yuklanadi. Faqat `.zip` ichidan `m3u8` topilsa yoki tayyor `.m3u8` tanlansa `stream_url` to'ldiriladi.";
+
+  const saveButtonLabel = mediaSubmitting
+    ? "Yuborilmoqda..."
+    : videoFile
+      ? isZipFile(videoFile)
+        ? "Saqlash va HLS yuklash"
+        : videoProcessing.hls_enabled
+          ? "Saqlash va media navbatiga yuborish"
+          : "Saqlash va to'g'ridan-to'g'ri yuklash"
+      : "Saqlash";
 
   const handleDelete = async (episodeId: string) => {
     if (!confirm("Epizodni o'chirmoqchimisiz?")) return;
 
     const { error } = await supabase.from("episodes").delete().eq("id", episodeId);
     if (error) {
-      toast.error(error.message);
+      toast.error(formatErrorMessage(error, "Epizodni o'chirishda xatolik yuz berdi"));
       return;
     }
 
@@ -782,6 +935,9 @@ export default function CMEpisodesPage() {
               currentStreamUrl={form.stream_url || ""}
               job={mediaJob}
               uploading={mediaSubmitting}
+              uploadProgress={uploadProgress}
+              uploadStatus={uploadStatus}
+              videoModeDescription={videoModeDescription}
               onVideoFileChange={setVideoFile}
               onSubtitleFileChange={setSubtitleFile}
             />
@@ -834,8 +990,9 @@ export default function CMEpisodesPage() {
                   value={form.stream_url || ""}
                   readOnly
                   className="border-border bg-background"
-                  placeholder="Media job yakunlangach avtomatik to'ldiriladi"
+                  placeholder={streamPlaceholder}
                 />
+                <p className="text-xs text-muted-foreground">{streamHelperText}</p>
                 <StorageAssetPicker
                   title="Oldingi video faylni tanlash"
                   selectedUrl={form.video_url || ""}
@@ -844,10 +1001,15 @@ export default function CMEpisodesPage() {
                   channelId={selectedContent?.channel_id || null}
                   buttonLabel="Oldingi video URL ni tanlash"
                   onSelect={(asset) =>
-                    setForm((current) => ({
-                      ...current,
-                      video_url: asset.public_url || "",
-                    }))
+                    setForm((current) => {
+                      const nextUrl = asset.public_url || "";
+                      const isHls = nextUrl.toLowerCase().includes(".m3u8");
+                      return {
+                        ...current,
+                        video_url: nextUrl,
+                        stream_url: isHls ? nextUrl : "",
+                      };
+                    })
                   }
                 />
                 <StorageAssetPicker
@@ -894,11 +1056,7 @@ export default function CMEpisodesPage() {
               onClick={() => void handleSave()}
               disabled={mediaSubmitting}
             >
-              {mediaSubmitting
-                ? "Yuborilmoqda..."
-                : videoFile
-                  ? "Saqlash va media navbatiga yuborish"
-                  : "Saqlash"}
+              {saveButtonLabel}
             </Button>
           </div>
         </DialogContent>

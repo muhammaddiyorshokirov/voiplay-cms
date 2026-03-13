@@ -1,27 +1,51 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import type { Tables } from "@/integrations/supabase/types";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Save, Shield, Upload, Bell, Palette } from "lucide-react";
+import { Save, Shield, Upload, Bell, Palette, Film } from "lucide-react";
+import {
+  defaultUploadLimits,
+  defaultVideoProcessingSettings,
+  normalizeUploadLimitSettings,
+  normalizeVideoProcessingSettings,
+  type UploadLimitSettings,
+  type VideoProcessingSettings,
+} from "@/lib/appSettings";
 
 interface Settings {
-  upload_limits: { max_video_mb: number; max_image_mb: number };
+  upload_limits: UploadLimitSettings;
+  video_processing: VideoProcessingSettings;
   content_limits: { max_content_per_day: number; max_episodes_per_day: number };
   moderation: { enabled: boolean; auto_publish: boolean };
   notifications: { notify_new_content: boolean; notify_new_episode: boolean };
 }
 
 const defaults: Settings = {
-  upload_limits: { max_video_mb: 350, max_image_mb: 5 },
+  upload_limits: defaultUploadLimits,
+  video_processing: defaultVideoProcessingSettings,
   content_limits: { max_content_per_day: 10, max_episodes_per_day: 50 },
   moderation: { enabled: true, auto_publish: false },
   notifications: { notify_new_content: true, notify_new_episode: true },
 };
+
+type SettingsKey = keyof Settings;
+type AppSettingRow = Pick<Tables<"app_settings">, "key" | "value">;
+
+function isSettingsKey(key: string): key is SettingsKey {
+  return (
+    key === "upload_limits" ||
+    key === "video_processing" ||
+    key === "content_limits" ||
+    key === "moderation" ||
+    key === "notifications"
+  );
+}
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -31,13 +55,36 @@ export default function SettingsPage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data } = await supabase.from("app_settings" as any).select("key, value");
-      if (data) {
-        const merged = { ...defaults };
-        (data as any[]).forEach((row: any) => {
-          if (row.key in merged) (merged as any)[row.key] = row.value;
-        });
+      try {
+        const { data, error } = await supabase.from("app_settings").select("key, value");
+        if (error) throw error;
+
+        const merged: Settings = {
+          upload_limits: { ...defaults.upload_limits },
+          video_processing: { ...defaults.video_processing },
+          content_limits: { ...defaults.content_limits },
+          moderation: { ...defaults.moderation },
+          notifications: { ...defaults.notifications },
+        };
+        if (Array.isArray(data)) {
+          data.forEach((row: AppSettingRow) => {
+            if (isSettingsKey(row.key)) {
+              switch (row.key) {
+                case "upload_limits":
+                  merged.upload_limits = normalizeUploadLimitSettings(row.value);
+                  break;
+                case "video_processing":
+                  merged.video_processing = normalizeVideoProcessingSettings(row.value);
+                  break;
+                default:
+                  merged[row.key] = row.value as Settings[typeof row.key];
+              }
+            }
+          });
+        }
         setSettings(merged);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Sozlamalarni yuklab bo'lmadi");
       }
       setLoading(false);
     }
@@ -46,8 +93,8 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setSaving(true);
-    const entries = Object.entries(settings) as [string, any][];
-    const { error } = await supabase.from("app_settings" as any).upsert(
+    const entries = Object.entries(settings) as Array<[SettingsKey, Settings[SettingsKey]]>;
+    const { error } = await supabase.from("app_settings").upsert(
       entries.map(([key, value]) => ({
         key,
         value,
@@ -67,7 +114,11 @@ export default function SettingsPage() {
     setSaving(false);
   };
 
-  const update = <K extends keyof Settings>(section: K, field: string, value: any) => {
+  const update = <K extends keyof Settings, F extends keyof Settings[K]>(
+    section: K,
+    field: F,
+    value: Settings[K][F],
+  ) => {
     setSettings(prev => ({
       ...prev,
       [section]: { ...prev[section], [field]: value },
@@ -145,6 +196,24 @@ export default function SettingsPage() {
                 className="bg-background border-border"
               />
               <p className="text-xs text-muted-foreground">Standart: 5 MB</p>
+            </div>
+          </div>
+          <div className="rounded-md border border-border bg-background px-4 py-4">
+            <div className="flex items-center gap-3">
+              <Film className="h-5 w-5 text-primary" />
+              <div className="flex-1">
+                <Label className="text-sm font-medium text-foreground">Episode videolarni HLS ga o'tkazish</Label>
+                <p className="text-xs text-muted-foreground">
+                  Yoqilgan bo'lsa MP4, MOV, MKV va boshqa videolar media service orqali HLS formatga o'tadi. O'chirilsa video to'g'ridan-to'g'ri R2 ga yuklanadi.
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Eslatma: `.zip` ichida `m3u8` bo'lsa har doim HLS deb qabul qilinadi.
+                </p>
+              </div>
+              <Switch
+                checked={settings.video_processing.hls_enabled}
+                onCheckedChange={(v) => update("video_processing", "hls_enabled", v)}
+              />
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

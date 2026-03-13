@@ -65,7 +65,10 @@ export function inferAssetKindFromPath(path?: string | null, mimeType?: string |
     return "image";
   }
 
-  if (cleanMime.startsWith("video/") || ["mp4", "mkv", "mov", "webm", "m4v"].includes(ext || "")) {
+  if (
+    cleanMime.startsWith("video/") ||
+    ["mp4", "mkv", "mov", "webm", "m4v", "m3u8", "ts", "m4s"].includes(ext || "")
+  ) {
     return "video";
   }
 

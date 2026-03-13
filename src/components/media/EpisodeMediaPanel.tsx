@@ -22,6 +22,9 @@ interface EpisodeMediaPanelProps {
   currentStreamUrl?: string | null;
   job?: MediaJob | null;
   uploading?: boolean;
+  uploadProgress?: number | null;
+  uploadStatus?: string | null;
+  videoModeDescription?: string | null;
   onVideoFileChange: (file: File | null) => void;
   onSubtitleFileChange: (file: File | null) => void;
 }
@@ -37,11 +40,15 @@ export function EpisodeMediaPanel({
   currentStreamUrl,
   job,
   uploading = false,
+  uploadProgress,
+  uploadStatus,
+  videoModeDescription,
   onVideoFileChange,
   onSubtitleFileChange,
 }: EpisodeMediaPanelProps) {
   const pathPreview = buildEpisodeMediaPathPreview(channelName, contentTitle, episodeNumber);
   const progress = job ? getMediaJobProgress(job) : 0;
+  const zipSelected = videoFile?.name.toLowerCase().endsWith(".zip");
 
   return (
     <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
@@ -57,19 +64,31 @@ export function EpisodeMediaPanel({
           <Label className="text-sm text-muted-foreground">Video source</Label>
           <Input
             type="file"
-            accept="video/*"
+            accept="video/*,.zip,application/zip,application/x-zip-compressed"
             disabled={uploading}
             onChange={(event) => onVideoFileChange(event.target.files?.[0] || null)}
             className="border-border bg-background"
           />
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{videoFile ? `Tanlandi: ${videoFile.name}` : currentVideoUrl ? "Joriy source mavjud" : "Yangi video tanlanmagan"}</span>
+            <span>
+              {videoFile
+                ? `Tanlandi: ${videoFile.name}${zipSelected ? " (HLS ZIP)" : ""}`
+                : currentVideoUrl
+                  ? "Joriy source mavjud"
+                  : "Yangi video tanlanmagan"}
+            </span>
             {videoFile ? (
               <Button type="button" variant="ghost" size="sm" onClick={() => onVideoFileChange(null)}>
                 Tozalash
               </Button>
             ) : null}
           </div>
+          <p className="text-xs text-muted-foreground">
+            `.zip` tanlansa HLS arxiv sifatida qabul qilinadi, ichidagi `m3u8` topilib to'g'ridan-to'g'ri R2 ga extract qilinadi.
+          </p>
+          {videoModeDescription ? (
+            <p className="text-xs text-muted-foreground">{videoModeDescription}</p>
+          ) : null}
         </div>
 
         <div className="space-y-2">
@@ -106,6 +125,16 @@ export function EpisodeMediaPanel({
           <p className="mt-1 truncate text-foreground">{currentStreamUrl || "—"}</p>
         </div>
       </div>
+
+      {typeof uploadProgress === "number" ? (
+        <div className="space-y-2 rounded-md border border-border bg-background p-3">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>{uploadStatus || "Fayl yuklanmoqda"}</span>
+            <span>{uploadProgress}%</span>
+          </div>
+          <Progress value={uploadProgress} className="h-2" />
+        </div>
+      ) : null}
 
       {job ? (
         <div className="space-y-3 rounded-md border border-border bg-background p-3">

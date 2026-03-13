@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Upload, X, FileVideo, FileImage, FileText, Check, AlertTriangle } from "lucide-react";
+import { Upload, X, Check } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { uploadFileToR2 } from "@/lib/r2Upload";
 
 interface R2UploadProps {
   folder: string;
@@ -27,14 +27,7 @@ const DANGEROUS_SIGNATURES = [
   [0x4D, 0x5A], // PE/EXE
   [0x7F, 0x45, 0x4C, 0x46], // ELF
   [0x23, 0x21], // Shell script shebang #!
-  [0x50, 0x4B, 0x03, 0x04], // ZIP (could contain malware)
 ];
-
-function getFileIcon(type: string) {
-  if (type.startsWith("video")) return FileVideo;
-  if (type.startsWith("image")) return FileImage;
-  return FileText;
-}
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -120,42 +113,12 @@ export function R2Upload({
     setFileName(file.name);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast.error("Avval tizimga kiring");
-        return;
-      }
-
-      setProgress(20);
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("folder", folder);
-      if (metadata) {
-        formData.append("metadata", JSON.stringify(metadata));
-      }
-
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/r2-upload`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: formData,
-        }
-      );
-
-      setProgress(80);
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || "Yuklashda xato");
-      }
-
-      const result = await response.json();
-      setProgress(100);
+      const result = await uploadFileToR2({
+        file,
+        folder,
+        metadata,
+        onProgress: (value) => setProgress(Math.max(value, 10)),
+      });
 
       onUploadComplete(result.url, result.key);
       toast.success(`Fayl yuklandi! (${formatSize(file.size)})`);
