@@ -342,6 +342,15 @@ export default function ContentEditorPage() {
             <div className="space-y-2">
               <Label className="text-muted-foreground text-sm">Treyler video</Label>
               <R2Upload folder="trailers" accept="video/*" label="Treyler yuklash" value={form.trailer_url || ""} maxSizeMB={uploadLimits.max_video_mb} metadata={{ assetKind: "video", channelId: form.channel_id || null, channelName: selectedChannel?.channel_name || null, contentId: isNew ? null : id || null, contentTitle: form.title || form.slug || null, contentType: form.type || null, ownerUserId: selectedChannel?.owner_id || null, sourceTable: "contents", sourceColumn: "trailer_url" }} onUploadComplete={(url) => updateField("trailer_url", url)} />
+              <Input
+                value={form.trailer_url || ""}
+                onChange={(event) => updateField("trailer_url", event.target.value)}
+                placeholder="https://youtube.com/watch?v=... yoki https://youtu.be/..."
+                className="bg-background border-border"
+              />
+              <p className="text-xs text-muted-foreground">
+                Treylerni fayl qilib yuklashingiz yoki YouTube havolasini kiritishingiz mumkin.
+              </p>
               <StorageAssetPicker
                 title="Treyler uchun oldingi faylni tanlash"
                 selectedUrl={form.trailer_url || ""}

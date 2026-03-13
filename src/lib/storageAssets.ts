@@ -24,6 +24,25 @@ function trimQuery(path: string) {
   return path.split("?")[0]?.trim() ?? "";
 }
 
+function isYouTubeUrl(url?: string | null) {
+  if (!url) return false;
+
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return (
+      hostname === "youtube.com" ||
+      hostname === "www.youtube.com" ||
+      hostname === "m.youtube.com" ||
+      hostname === "youtu.be" ||
+      hostname === "www.youtu.be" ||
+      hostname === "youtube-nocookie.com" ||
+      hostname === "www.youtube-nocookie.com"
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function extractObjectKeyFromUrl(url?: string | null) {
   if (!url) return null;
   const clean = trimQuery(url);
@@ -113,6 +132,10 @@ export function isVideoAsset(assetKind?: string | null, url?: string | null) {
 export async function syncStorageAssetsByUrls(links: StorageAssetLink[], context: StorageAssetContext = {}) {
   const preparedRows = links
     .map((link) => {
+      if (isYouTubeUrl(link.url)) {
+        return null;
+      }
+
       const objectKey = extractObjectKeyFromUrl(link.url);
       const fileName = getFileNameFromObjectKey(objectKey);
 

@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { EpisodeMediaPanel } from "@/components/media/EpisodeMediaPanel";
+import { EpisodeDurationInput } from "@/components/media/EpisodeDurationInput";
 import {
   createMediaJob,
   getMediaJob,
@@ -31,9 +32,11 @@ import { formatErrorMessage } from "@/lib/errorMessage";
 import { isZipFile, uploadFileToR2 } from "@/lib/r2Upload";
 import { combineUploadProgress } from "@/lib/uploadProgress";
 import {
+  fetchContentMakerOptions,
   fetchAdminContentOptions,
   getProfileDisplayName,
   type AdminContentOption,
+  type ContentMakerOption,
 } from "@/lib/adminLookups";
 import { useUploadTracker } from "@/hooks/useUploadTracker";
 
@@ -56,9 +59,12 @@ function isActiveMediaJob(job?: MediaJob | null) {
   return Boolean(job && ["queued", "running", "uploading", "cancelling"].includes(job.status));
 }
 
+const ALL_CONTENT_MAKERS_VALUE = "__all__";
+
 export default function EpisodesPage() {
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [contents, setContents] = useState<AdminContentOption[]>([]);
+  const [contentMakers, setContentMakers] = useState<ContentMakerOption[]>([]);
   const [seasons, setSeasons] = useState<{ id: string; content_id: string; season_number: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -72,6 +78,7 @@ export default function EpisodesPage() {
   const [videoProcessing, setVideoProcessing] = useState<VideoProcessingSettings>(
     defaultVideoProcessingSettings,
   );
+  const [selectedOwnerId, setSelectedOwnerId] = useState(ALL_CONTENT_MAKERS_VALUE);
   const terminalStatusRef = useRef<string | null>(null);
   const {
     startTask,
@@ -110,15 +117,46 @@ export default function EpisodesPage() {
     [contents, form.content_id],
   );
 
+  const filteredContents = useMemo(
+    () =>
+      selectedOwnerId === ALL_CONTENT_MAKERS_VALUE
+        ? contents
+        : contents.filter((item) => item.owner_id === selectedOwnerId),
+    [contents, selectedOwnerId],
+  );
+
   const filteredSeasons = useMemo(
     () => seasons.filter((season) => season.content_id === form.content_id),
     [seasons, form.content_id],
   );
 
+  useEffect(() => {
+    if (!form.content_id) return;
+    if (selectedOwnerId !== ALL_CONTENT_MAKERS_VALUE) return;
+
+    const content = contents.find((item) => item.id === form.content_id);
+    if (!content?.owner_id) return;
+
+    setSelectedOwnerId(content.owner_id);
+  }, [contents, form.content_id, selectedOwnerId]);
+
+  useEffect(() => {
+    if (selectedOwnerId === ALL_CONTENT_MAKERS_VALUE || !form.content_id) return;
+
+    const contentStillVisible = filteredContents.some((item) => item.id === form.content_id);
+    if (contentStillVisible) return;
+
+    setForm((current) => ({
+      ...current,
+      content_id: "",
+      season_id: "",
+    }));
+  }, [filteredContents, form.content_id, selectedOwnerId]);
+
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [episodeRes, contentOptions, seasonRes, settings] = await Promise.all([
+      const [episodeRes, contentOptions, seasonRes, settings, makers] = await Promise.all([
         supabase
           .from("episodes")
           .select("*, contents(title), seasons(season_number)")
@@ -130,6 +168,7 @@ export default function EpisodesPage() {
           .select("id, content_id, season_number")
           .order("season_number"),
         fetchVideoProcessingSettings(),
+        fetchContentMakerOptions(),
       ]);
 
       if (episodeRes.error) throw episodeRes.error;
@@ -137,12 +176,14 @@ export default function EpisodesPage() {
 
       setEpisodes((episodeRes.data || []) as Episode[]);
       setContents(contentOptions);
+      setContentMakers(makers);
       setSeasons(seasonRes.data || []);
       setVideoProcessing(settings || defaultVideoProcessingSettings);
     } catch (error) {
       toast.error(formatErrorMessage(error, "Epizodlar sahifasini yuklashda xatolik yuz berdi"));
       setEpisodes([]);
       setContents([]);
+      setContentMakers([]);
       setSeasons([]);
       setVideoProcessing(defaultVideoProcessingSettings);
     } finally {
@@ -240,6 +281,7 @@ export default function EpisodesPage() {
       release_date: "",
       premium_unlock_at: "",
     });
+    setSelectedOwnerId(ALL_CONTENT_MAKERS_VALUE);
     resetMediaState();
   };
 
@@ -252,6 +294,8 @@ export default function EpisodesPage() {
   const openEdit = (episode: Episode) => {
     setEditing(episode);
     resetMediaState();
+    const episodeContent = contents.find((item) => item.id === episode.content_id);
+    setSelectedOwnerId(episodeContent?.owner_id || ALL_CONTENT_MAKERS_VALUE);
     setForm({
       content_id: episode.content_id,
       season_id: episode.season_id || "",
@@ -673,7 +717,24 @@ export default function EpisodesPage() {
           </DialogHeader>
 
           <div className="space-y-4 overflow-y-auto pr-2" style={{ maxHeight: "calc(90vh - 100px)" }}>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Content maker</Label>
+                <Select value={selectedOwnerId} onValueChange={setSelectedOwnerId}>
+                  <SelectTrigger className="border-border bg-background">
+                    <SelectValue placeholder="Content makerni tanlang" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60 border-border bg-card">
+                    <SelectItem value={ALL_CONTENT_MAKERS_VALUE}>Barcha content makerlar</SelectItem>
+                    {contentMakers.map((contentMaker) => (
+                      <SelectItem key={contentMaker.id} value={contentMaker.id}>
+                        {getProfileDisplayName(contentMaker)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground">Kontent</Label>
                 <Select value={form.content_id || ""} onValueChange={(value) => setForm((current) => ({ ...current, content_id: value, season_id: "" }))}>
@@ -681,7 +742,7 @@ export default function EpisodesPage() {
                     <SelectValue placeholder="Tanlang" />
                   </SelectTrigger>
                   <SelectContent className="max-h-60 border-border bg-card">
-                    {contents.map((content) => (
+                    {filteredContents.map((content) => (
                       <SelectItem key={content.id} value={content.id}>
                         {content.title}
                         {content.channel_name ? ` · ${content.channel_name}` : ""}
@@ -716,15 +777,10 @@ export default function EpisodesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground">Epizod raqami</Label>
-                <Input type="number" value={form.episode_number || ""} onChange={(event) => setForm((current) => ({ ...current, episode_number: Number(event.target.value) }))} className="border-border bg-background" />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-sm text-muted-foreground">Davomiylik (sek)</Label>
-                <Input type="number" value={form.duration_seconds || ""} onChange={(event) => setForm((current) => ({ ...current, duration_seconds: Number(event.target.value) || undefined }))} className="border-border bg-background" />
+                <Input type="number" min={1} value={form.episode_number || ""} onChange={(event) => setForm((current) => ({ ...current, episode_number: Number(event.target.value) }))} className="border-border bg-background" />
               </div>
 
               <div className="space-y-2">
@@ -747,6 +803,16 @@ export default function EpisodesPage() {
                 </Select>
               </div>
             </div>
+
+            <EpisodeDurationInput
+              valueSeconds={form.duration_seconds}
+              onChange={(value) =>
+                setForm((current) => ({
+                  ...current,
+                  duration_seconds: value,
+                }))
+              }
+            />
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

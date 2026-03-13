@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/admin/StatusBadge";
 import { R2Upload } from "@/components/admin/R2Upload";
 import { StorageAssetPicker } from "@/components/admin/StorageAssetPicker";
 import { EpisodeMediaPanel } from "@/components/media/EpisodeMediaPanel";
+import { EpisodeDurationInput } from "@/components/media/EpisodeDurationInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -787,7 +788,7 @@ export default function CMEpisodesPage() {
             className="space-y-4 overflow-y-auto pr-2"
             style={{ maxHeight: "calc(90vh - 100px)" }}
           >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground">Kontent</Label>
                 <Select
@@ -817,6 +818,16 @@ export default function CMEpisodesPage() {
               </div>
 
               <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Kanal</Label>
+                <Input
+                  value={selectedContent?.content_maker_channels?.channel_name || ""}
+                  readOnly
+                  placeholder="Kontent tanlang"
+                  className="border-border bg-background"
+                />
+              </div>
+
+              <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground">Fasl</Label>
                 <Select
                   value={form.season_id || "none"}
@@ -843,7 +854,7 @@ export default function CMEpisodesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground">
                   Epizod raqami
@@ -856,23 +867,6 @@ export default function CMEpisodesPage() {
                     setForm((current) => ({
                       ...current,
                       episode_number: Number(event.target.value),
-                    }))
-                  }
-                  className="border-border bg-background"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-sm text-muted-foreground">
-                  Davomiylik (sek)
-                </Label>
-                <Input
-                  type="number"
-                  value={form.duration_seconds || ""}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      duration_seconds:
-                        Number(event.target.value) || undefined,
                     }))
                   }
                   className="border-border bg-background"
@@ -948,6 +942,16 @@ export default function CMEpisodesPage() {
                 />
               </div>
             </div>
+
+            <EpisodeDurationInput
+              valueSeconds={form.duration_seconds}
+              onChange={(value) =>
+                setForm((current) => ({
+                  ...current,
+                  duration_seconds: value,
+                }))
+              }
+            />
 
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Tavsif</Label>
