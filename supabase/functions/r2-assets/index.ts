@@ -51,6 +51,11 @@ function inferAssetKind(path: string, mimeType?: string | null) {
   return "other";
 }
 
+function shouldIncludeObjectKey(key: string) {
+  if (!key.includes("/hls/")) return true;
+  return key.endsWith("/hls/master.m3u8");
+}
+
 async function hmac(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {
   const cryptoKey = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(data));
@@ -279,7 +284,9 @@ serve(async (req) => {
       });
     }
 
-    const bucketObjects = await listBucketObjects();
+    const bucketObjects = (await listBucketObjects()).filter((object) =>
+      shouldIncludeObjectKey(object.key),
+    );
     const keys = bucketObjects.map((object) => object.key);
     const existingMetadata = keys.length ? await chunkedMetadataQuery(serviceClient, keys) : [];
     const metadataMap = new Map(existingMetadata.map((row) => [row.object_key, row]));

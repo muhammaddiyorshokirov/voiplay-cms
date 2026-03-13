@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Film, Tv, Clapperboard, ListVideo,
   Tags, Bell, ShieldCheck, Users, Settings, LogOut, Layers,
-  ScrollText, ChevronDown, MessageSquare, Crown, CreditCard, Radio, HardDrive
+  ScrollText, ChevronDown, MessageSquare, Crown, CreditCard, Radio, HardDrive, Workflow
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -35,6 +35,7 @@ const navItems: NavItem[] = [
   { title: "Janrlar", url: "/admin/genres", icon: Tags },
   { title: "Kanallar", url: "/admin/channels", icon: Radio },
   { title: "Storage", url: "/admin/storage", icon: HardDrive },
+  { title: "Media navbati", url: "/admin/media-queue", icon: Workflow },
   { title: "Bannerlar", url: "/admin/banners", icon: Tv },
   { title: "Izohlar", url: "/admin/comments", icon: MessageSquare },
   { title: "Bildirishnomalar", url: "/admin/notifications", icon: Bell },

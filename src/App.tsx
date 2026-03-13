@@ -25,11 +25,13 @@ import PremiumPlansPage from "@/pages/admin/PremiumPlansPage";
 import SubscriptionsPage from "@/pages/admin/SubscriptionsPage";
 import ChannelsPage from "@/pages/admin/ChannelsPage";
 import StoragePage from "@/pages/admin/StoragePage";
+import MediaQueuePage from "@/pages/admin/MediaQueuePage";
 import CMDashboardPage from "@/pages/cm/CMDashboardPage";
 import CMContentPage from "@/pages/cm/CMContentPage";
 import CMEpisodesPage from "@/pages/cm/CMEpisodesPage";
 import CMChannelPage from "@/pages/cm/CMChannelPage";
 import CMRequestsPage from "@/pages/cm/CMRequestsPage";
+import CMMediaQueuePage from "@/pages/cm/CMMediaQueuePage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -95,6 +97,7 @@ const App = () => (
               <Route path="subscriptions" element={<SubscriptionsPage />} />
               <Route path="channels" element={<ChannelsPage />} />
               <Route path="storage" element={<StoragePage />} />
+              <Route path="media-queue" element={<MediaQueuePage />} />
             </Route>
 
             <Route path="/cm" element={<CMRoute><CMLayout /></CMRoute>}>
@@ -103,6 +106,7 @@ const App = () => (
               <Route path="episodes" element={<CMEpisodesPage />} />
               <Route path="channel" element={<CMChannelPage />} />
               <Route path="requests" element={<CMRequestsPage />} />
+              <Route path="media-queue" element={<CMMediaQueuePage />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

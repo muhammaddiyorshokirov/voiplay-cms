@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { DataTable } from "@/components/admin/DataTable";
@@ -14,6 +14,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import { EpisodeMediaPanel } from "@/components/media/EpisodeMediaPanel";
+import {
+  createMediaJob,
+  getMediaJob,
+  type MediaJob,
+} from "@/lib/mediaService";
 import type { Tables, TablesInsert, Enums } from "@/integrations/supabase/types";
 import { syncStorageAssetsByUrls } from "@/lib/storageAssets";
 
@@ -52,6 +58,10 @@ function toDateTimeLocalValue(value?: string | null) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
+function isActiveMediaJob(job?: MediaJob | null) {
+  return Boolean(job && ["queued", "running", "uploading", "cancelling"].includes(job.status));
+}
+
 export default function EpisodesPage() {
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [contents, setContents] = useState<ContentOption[]>([]);
@@ -59,6 +69,11 @@ export default function EpisodesPage() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Episode | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [subtitleFile, setSubtitleFile] = useState<File | null>(null);
+  const [mediaJob, setMediaJob] = useState<MediaJob | null>(null);
+  const [mediaSubmitting, setMediaSubmitting] = useState(false);
+  const terminalStatusRef = useRef<string | null>(null);
 
   const [form, setForm] = useState<Partial<TablesInsert<"episodes">>>({
     content_id: "",
@@ -127,8 +142,64 @@ export default function EpisodesPage() {
   };
 
   useEffect(() => {
-    fetchAll();
+    void fetchAll();
   }, []);
+
+  useEffect(() => {
+    if (!dialogOpen || !mediaJob?.id || !isActiveMediaJob(mediaJob)) return;
+
+    let active = true;
+
+    const poll = async () => {
+      try {
+        const response = await getMediaJob(mediaJob.id);
+        if (!active) return;
+
+        setMediaJob(response.job);
+        setForm((current) => ({
+          ...current,
+          video_url: response.job.result_video_url || current.video_url || "",
+          subtitle_url: response.job.result_subtitle_url || current.subtitle_url || "",
+          stream_url: response.job.result_stream_url || current.stream_url || "",
+          duration_seconds: response.job.duration_seconds ?? current.duration_seconds,
+        }));
+
+        if (response.job.status !== terminalStatusRef.current && ["completed", "failed", "cancelled"].includes(response.job.status)) {
+          terminalStatusRef.current = response.job.status;
+          if (response.job.status === "completed") {
+            toast.success("HLS tayyor bo'ldi");
+            setVideoFile(null);
+            setSubtitleFile(null);
+            void fetchAll();
+          } else {
+            toast.error(response.job.failure_reason || response.job.cancel_reason || "Media job to'xtadi");
+          }
+        }
+      } catch (error) {
+        if (active) {
+          toast.error(error instanceof Error ? error.message : "Media job holatini yuklab bo'lmadi");
+        }
+      }
+    };
+
+    void poll();
+    const interval = window.setInterval(() => {
+      void poll();
+    }, 5000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [dialogOpen, mediaJob]);
+
+  const resetMediaState = () => {
+    setVideoFile(null);
+    setSubtitleFile(null);
+    setMediaJob(null);
+    setMediaSubmitting(false);
+    terminalStatusRef.current = null;
+  };
 
   const resetForm = () => {
     setForm({
@@ -153,6 +224,7 @@ export default function EpisodesPage() {
       release_date: "",
       premium_unlock_at: "",
     });
+    resetMediaState();
   };
 
   const openNew = () => {
@@ -163,6 +235,7 @@ export default function EpisodesPage() {
 
   const openEdit = (episode: Episode) => {
     setEditing(episode);
+    resetMediaState();
     setForm({
       content_id: episode.content_id,
       season_id: episode.season_id || "",
@@ -194,9 +267,19 @@ export default function EpisodesPage() {
       return;
     }
 
+    if (!selectedContent?.channel_id) {
+      toast.error("Tanlangan kontent uchun kanal topilmadi");
+      return;
+    }
+
+    if (isActiveMediaJob(mediaJob) && videoFile) {
+      toast.error("Avvalgi media job tugamaguncha yangi job yuborib bo'lmaydi");
+      return;
+    }
+
     const payload: Partial<TablesInsert<"episodes">> = {
       ...form,
-      channel_id: selectedContent?.channel_id || null,
+      channel_id: selectedContent.channel_id,
       external_id: form.external_id?.trim() || `ep-${Date.now()}`,
       title: form.title?.trim() || null,
       description: form.description?.trim() || null,
@@ -212,6 +295,8 @@ export default function EpisodesPage() {
       intro_end_seconds: form.intro_end_seconds || null,
       status: form.is_published ? "published" : (form.status as Enums<"episode_status">) || "draft",
     };
+
+    const shouldQueueMedia = Boolean(videoFile);
 
     try {
       let episodeId = editing?.id || null;
@@ -232,23 +317,44 @@ export default function EpisodesPage() {
 
       await syncStorageAssetsByUrls(
         [
-          { url: payload.video_url, assetKind: "video", sourceColumn: "video_url" },
+          !shouldQueueMedia ? { url: payload.video_url, assetKind: "video", sourceColumn: "video_url" } : null,
           { url: payload.thumbnail_url, assetKind: "image", sourceColumn: "thumbnail_url" },
-          { url: payload.subtitle_url, assetKind: "subtitle", sourceColumn: "subtitle_url" },
-        ],
+          !shouldQueueMedia ? { url: payload.subtitle_url, assetKind: "subtitle", sourceColumn: "subtitle_url" } : null,
+        ].filter(Boolean) as Array<{ url?: string | null; assetKind?: string; sourceColumn?: string | null }>,
         {
-          channelId: selectedContent?.channel_id,
+          channelId: selectedContent.channel_id,
           contentId: payload.content_id as string,
           episodeId,
-          ownerUserId: selectedContent?.owner_id,
+          ownerUserId: selectedContent.owner_id,
           sourceTable: "episodes",
         },
       );
 
+      if (shouldQueueMedia && episodeId) {
+        setMediaSubmitting(true);
+        const response = await createMediaJob({
+          episodeId,
+          contentId: payload.content_id as string,
+          channelId: selectedContent.channel_id,
+          episodeNumber: Number(payload.episode_number),
+          videoFile: videoFile as File,
+          subtitleFile,
+        });
+
+        setMediaJob(response.job);
+        terminalStatusRef.current = response.job.status;
+        setMediaSubmitting(false);
+        toast.success("Epizod saqlandi va media navbatga yuborildi");
+        await fetchAll();
+        return;
+      }
+
       toast.success("Epizod saqlandi");
       setDialogOpen(false);
-      fetchAll();
+      resetMediaState();
+      await fetchAll();
     } catch (error) {
+      setMediaSubmitting(false);
       toast.error(error instanceof Error ? error.message : "Saqlashda xatolik yuz berdi");
     }
   };
@@ -261,7 +367,7 @@ export default function EpisodesPage() {
       return;
     }
     toast.success("Epizod o'chirildi");
-    fetchAll();
+    await fetchAll();
   };
 
   return (
@@ -294,7 +400,7 @@ export default function EpisodesPage() {
                 <Button variant="ghost" size="icon" onClick={(event) => { event.stopPropagation(); openEdit(episode); }}>
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={(event) => { event.stopPropagation(); handleDelete(episode.id); }}>
+                <Button variant="ghost" size="icon" onClick={(event) => { event.stopPropagation(); void handleDelete(episode.id); }}>
                   <Trash2 className="h-3.5 w-3.5 text-destructive" />
                 </Button>
               </div>
@@ -303,7 +409,15 @@ export default function EpisodesPage() {
         ]}
       />
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) {
+            resetMediaState();
+          }
+        }}
+      >
         <DialogContent className="max-h-[90vh] max-w-3xl border-border bg-card">
           <DialogHeader>
             <DialogTitle className="font-heading text-foreground">
@@ -414,38 +528,20 @@ export default function EpisodesPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">Video fayl</Label>
-              <R2Upload
-                folder="episodes"
-                accept="video/*"
-                label="Video yuklash (mp4, mkv, webm)"
-                value={form.video_url || ""}
-                maxSizeMB={500}
-                metadata={{
-                  assetKind: "video",
-                  channelId: selectedContent?.channel_id || null,
-                  channelName: selectedContent?.channel_name || null,
-                  contentId: form.content_id || null,
-                  contentTitle: selectedContent?.title || null,
-                  contentType: selectedContent?.type || null,
-                  episodeId: editing?.id || null,
-                  episodeNumber: form.episode_number || null,
-                  ownerUserId: selectedContent?.owner_id || null,
-                  sourceTable: "episodes",
-                  sourceColumn: "video_url",
-                }}
-                onUploadComplete={(url) => setForm((current) => ({ ...current, video_url: url }))}
-              />
-              <StorageAssetPicker
-                title="Epizod video faylini tanlash"
-                selectedUrl={form.video_url || ""}
-                assetKinds={["video"]}
-                ownerUserId={selectedContent?.owner_id || null}
-                channelId={selectedContent?.channel_id || null}
-                onSelect={(asset) => setForm((current) => ({ ...current, video_url: asset.public_url || "" }))}
-              />
-            </div>
+            <EpisodeMediaPanel
+              channelName={selectedContent?.channel_name}
+              contentTitle={selectedContent?.title}
+              episodeNumber={typeof form.episode_number === "number" ? form.episode_number : Number(form.episode_number || 0)}
+              videoFile={videoFile}
+              subtitleFile={subtitleFile}
+              currentVideoUrl={form.video_url || ""}
+              currentSubtitleUrl={form.subtitle_url || ""}
+              currentStreamUrl={form.stream_url || ""}
+              job={mediaJob}
+              uploading={mediaSubmitting}
+              onVideoFileChange={setVideoFile}
+              onSubtitleFileChange={setSubtitleFile}
+            />
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="space-y-2">
@@ -482,42 +578,12 @@ export default function EpisodesPage() {
               </div>
 
               <div className="space-y-2">
-                <Label className="text-sm text-muted-foreground">Subtitl fayl</Label>
-                <R2Upload
-                  folder="subtitles"
-                  accept=".srt,.vtt,.ass,.ssa"
-                  label="Subtitl yuklash"
-                  value={form.subtitle_url || ""}
-                  maxSizeMB={5}
-                  metadata={{
-                    assetKind: "subtitle",
-                    channelId: selectedContent?.channel_id || null,
-                    channelName: selectedContent?.channel_name || null,
-                    contentId: form.content_id || null,
-                    contentTitle: selectedContent?.title || null,
-                    contentType: selectedContent?.type || null,
-                    episodeId: editing?.id || null,
-                    episodeNumber: form.episode_number || null,
-                    ownerUserId: selectedContent?.owner_id || null,
-                    sourceTable: "episodes",
-                    sourceColumn: "subtitle_url",
-                  }}
-                  onUploadComplete={(url) => setForm((current) => ({ ...current, subtitle_url: url }))}
-                />
-                <StorageAssetPicker
-                  title="Subtitl faylini tanlash"
-                  selectedUrl={form.subtitle_url || ""}
-                  assetKinds={["subtitle", "document", "other"]}
-                  ownerUserId={selectedContent?.owner_id || null}
-                  channelId={selectedContent?.channel_id || null}
-                  onSelect={(asset) => setForm((current) => ({ ...current, subtitle_url: asset.public_url || "" }))}
-                />
+                <Label className="text-sm text-muted-foreground">Stream URL</Label>
+                <Input value={form.stream_url || ""} readOnly className="border-border bg-background" placeholder="Media service tugagach avtomatik to'ldiriladi" />
+                <p className="text-xs text-muted-foreground">
+                  Video tanlasangiz, HLS `stream_url` media service yakunlangach avtomatik yoziladi.
+                </p>
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">Stream URL</Label>
-              <Input value={form.stream_url || ""} onChange={(event) => setForm((current) => ({ ...current, stream_url: event.target.value }))} className="border-border bg-background" placeholder="https://..." />
             </div>
 
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -534,8 +600,8 @@ export default function EpisodesPage() {
               ))}
             </div>
 
-            <Button variant="gold" className="w-full" onClick={handleSave}>
-              Saqlash
+            <Button variant="gold" className="w-full" onClick={() => void handleSave()} disabled={mediaSubmitting}>
+              {mediaSubmitting ? "Yuborilmoqda..." : videoFile ? "Saqlash va navbatga yuborish" : "Saqlash"}
             </Button>
           </div>
         </DialogContent>

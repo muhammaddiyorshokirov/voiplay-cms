@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Film, ListVideo, Radio, LogOut, Tv, Send
+  LayoutDashboard, Film, ListVideo, Radio, LogOut, Tv, Send, Workflow
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
@@ -10,6 +10,7 @@ const navItems = [
   { title: "Boshqaruv paneli", url: "/cm", icon: LayoutDashboard },
   { title: "Kontent", url: "/cm/content", icon: Film },
   { title: "Epizodlar", url: "/cm/episodes", icon: ListVideo },
+  { title: "Media navbatim", url: "/cm/media-queue", icon: Workflow },
   { title: "So'rovlarim", url: "/cm/requests", icon: Send },
   { title: "Kanal sozlamalari", url: "/cm/channel", icon: Radio },
 ];
