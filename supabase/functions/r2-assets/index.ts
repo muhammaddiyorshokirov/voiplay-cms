@@ -710,7 +710,8 @@ async function buildReferenceMap(
 
   let requestsQuery = serviceClient
     .from("content_requests")
-    .select("id, title, requested_by, channel_id, poster_url, banner_url, thumbnail_url, trailer_url");
+    .select("id, title, requested_by, channel_id, poster_url, banner_url, thumbnail_url, trailer_url")
+    .eq("status", "pending");
   if (!role.isAdmin) {
     requestsQuery = requestsQuery.eq("requested_by", role.userId);
   }

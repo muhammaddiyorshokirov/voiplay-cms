@@ -114,73 +114,92 @@ export default function ReviewQueuePage() {
   const confirmApproveRequest = async () => {
     if (!selectedRequest) return;
     const r = selectedRequest;
+    let approvedContentId: string | null = r.content_id || null;
+    let createdContentId: string | null = null;
+    let createdSeasonId: string | null = null;
 
-    if (r.request_type === "content") {
-      // Create content
-      const slug = approveForm.slug.trim() || r.title?.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "untitled";
-      const { data, error } = await supabase.from("contents").insert({
-        title: r.title,
-        alternative_title: r.alternative_title,
-        type: r.content_type || "anime",
-        slug,
-        external_id: approveForm.external_id || `cm-${Date.now()}`,
-        description: r.description,
-        year: r.year,
-        country: r.country,
-        studio: r.studio,
-        age_rating: r.age_rating,
-        total_episodes: r.total_episodes,
-        total_seasons: r.total_seasons,
-        has_dub: r.has_dub || false,
-        has_subtitle: r.has_subtitle || false,
-        poster_url: r.poster_url,
-        banner_url: r.banner_url,
-        thumbnail_url: r.thumbnail_url,
-        trailer_url: r.trailer_url,
-        channel_id: r.channel_id,
-        publish_status: "published",
-        published_at: new Date().toISOString(),
-        status: "upcoming",
-      }).select("id").single();
-      if (error) { toast.error("Kontent yaratishda xatolik: " + error.message); return; }
+    try {
+      if (r.request_type === "content") {
+        const slug = approveForm.slug.trim() || r.title?.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "untitled";
+        const { data, error } = await supabase.from("contents").insert({
+          title: r.title,
+          alternative_title: r.alternative_title,
+          type: r.content_type || "anime",
+          slug,
+          external_id: approveForm.external_id || `cm-${Date.now()}`,
+          description: r.description,
+          year: r.year,
+          country: r.country,
+          studio: r.studio,
+          age_rating: r.age_rating,
+          total_episodes: r.total_episodes,
+          total_seasons: r.total_seasons,
+          has_dub: r.has_dub || false,
+          has_subtitle: r.has_subtitle || false,
+          poster_url: r.poster_url,
+          banner_url: r.banner_url,
+          thumbnail_url: r.thumbnail_url,
+          trailer_url: r.trailer_url,
+          channel_id: r.channel_id,
+          publish_status: "published",
+          published_at: new Date().toISOString(),
+          status: "upcoming",
+        }).select("id").single();
+        if (error) throw new Error("Kontent yaratishda xatolik: " + error.message);
 
-      if (data?.id && Array.isArray(r.genre_ids) && r.genre_ids.length > 0) {
-        const { error: genreError } = await supabase
-          .from("content_genres")
-          .insert(r.genre_ids.map((genreId: string) => ({ content_id: data.id, genre_id: genreId })));
+        approvedContentId = data?.id || null;
+        createdContentId = approvedContentId;
 
-        if (genreError) {
-          await supabase.from("contents").delete().eq("id", data.id);
-          toast.error("Janrlarni saqlashda xatolik: " + genreError.message);
-          return;
+        if (approvedContentId && Array.isArray(r.genre_ids) && r.genre_ids.length > 0) {
+          const { error: genreError } = await supabase
+            .from("content_genres")
+            .insert(r.genre_ids.map((genreId: string) => ({ content_id: approvedContentId as string, genre_id: genreId })));
+
+          if (genreError) {
+            throw new Error("Janrlarni saqlashda xatolik: " + genreError.message);
+          }
         }
+      } else if (r.request_type === "season") {
+        const { data, error } = await supabase.from("seasons").insert({
+          content_id: r.content_id,
+          season_number: r.season_number,
+          title: r.season_title,
+          description: r.season_description,
+          channel_id: r.channel_id,
+        }).select("id").single();
+        if (error) throw new Error("Fasl yaratishda xatolik: " + error.message);
+        createdSeasonId = data?.id || null;
       }
 
-      r.content_id = data?.id || null;
-    } else if (r.request_type === "season") {
-      // Create season
-      const { error } = await supabase.from("seasons").insert({
-        content_id: r.content_id,
-        season_number: r.season_number,
-        title: r.season_title,
-        description: r.season_description,
-        channel_id: r.channel_id,
-      });
-      if (error) { toast.error("Fasl yaratishda xatolik: " + error.message); return; }
+      const { error: requestError } = await supabase.from("content_requests" as any).update({
+        status: "approved",
+        content_id: approvedContentId,
+        admin_notes: approveForm.admin_notes.trim().slice(0, 2000) || null,
+        reviewed_by: user?.id,
+        reviewed_at: new Date().toISOString(),
+      }).eq("id", r.id);
+
+      if (requestError) {
+        throw new Error("So'rov holatini yangilashda xatolik: " + requestError.message);
+      }
+
+      toast.success("So'rov tasdiqlandi va yaratildi!");
+      setApproveDialogOpen(false);
+      fetchAll();
+    } catch (error) {
+      if (createdSeasonId) {
+        await supabase.from("seasons").delete().eq("id", createdSeasonId);
+      }
+
+      if (createdContentId) {
+        await supabase.from("content_genres").delete().eq("content_id", createdContentId);
+        await supabase.from("contents").delete().eq("id", createdContentId);
+      }
+
+      toast.error(
+        error instanceof Error ? error.message : "So'rovni tasdiqlab bo'lmadi",
+      );
     }
-
-    // Mark request as approved
-    await supabase.from("content_requests" as any).update({
-      status: "approved",
-      content_id: r.content_id || null,
-      admin_notes: approveForm.admin_notes.trim().slice(0, 2000) || null,
-      reviewed_by: user?.id,
-      reviewed_at: new Date().toISOString(),
-    }).eq("id", r.id);
-
-    toast.success("So'rov tasdiqlandi va yaratildi!");
-    setApproveDialogOpen(false);
-    fetchAll();
   };
 
   const viewRequestDetail = (r: any) => {
