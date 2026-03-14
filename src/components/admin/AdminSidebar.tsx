@@ -47,7 +47,12 @@ const navItems: NavItem[] = [
   { title: "Sozlamalar", url: "/admin/settings", icon: Settings },
 ];
 
-export function AdminSidebar() {
+interface AdminSidebarProps {
+  mobile?: boolean;
+  onNavigate?: () => void;
+}
+
+export function AdminSidebar({ mobile = false, onNavigate }: AdminSidebarProps) {
   const location = useLocation();
   const { profile, signOut } = useAuth();
   const [openGroup, setOpenGroup] = useState<string | null>(null);
@@ -58,7 +63,10 @@ export function AdminSidebar() {
   };
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-60 flex-col border-r border-border bg-sidebar">
+    <aside className={cn(
+      "flex w-60 flex-col border-r border-border bg-sidebar",
+      mobile ? "h-full min-h-0" : "fixed left-0 top-0 z-40 hidden h-screen lg:flex",
+    )}>
       <div className="flex h-16 items-center gap-2 border-b border-border px-5">
         <Tv className="h-7 w-7 text-primary" />
         <span className="font-heading text-lg font-bold text-foreground">VoiPlay</span>
@@ -91,7 +99,7 @@ export function AdminSidebar() {
                       <ul className="ml-7 mt-1 space-y-0.5 border-l border-border pl-3">
                         {item.children!.map((child) => (
                           <li key={child.url}>
-                            <NavLink to={child.url} end className="block rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground" activeClassName="text-primary font-medium">
+                            <NavLink to={child.url} end onClick={onNavigate} className="block rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground" activeClassName="text-primary font-medium">
                               {child.title}
                             </NavLink>
                           </li>
@@ -103,6 +111,7 @@ export function AdminSidebar() {
                   <NavLink
                     to={item.url}
                     end={item.url === "/admin"}
+                    onClick={onNavigate}
                     className={cn("flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-heading font-medium transition-colors", "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground")}
                     activeClassName="border-l-2 border-primary bg-sidebar-accent text-foreground"
                   >
@@ -125,7 +134,7 @@ export function AdminSidebar() {
             <p className="truncate text-sm font-medium text-foreground">{profile?.full_name || "Admin"}</p>
             <p className="text-xs text-muted-foreground">Administrator</p>
           </div>
-          <button onClick={signOut} className="text-muted-foreground hover:text-destructive transition-colors">
+          <button onClick={() => { onNavigate?.(); signOut(); }} className="text-muted-foreground hover:text-destructive transition-colors">
             <LogOut className="h-4 w-4" />
           </button>
         </div>

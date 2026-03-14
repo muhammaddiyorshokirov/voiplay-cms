@@ -68,13 +68,13 @@ export default function CMChannelPage() {
   if (!channel) return <div className="text-center py-20 text-muted-foreground">Sizda kanal mavjud emas. Administrator bilan bog'laning.</div>;
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in space-y-6">
       <PageHeader title="Kanal sozlamalari" subtitle="Kanalingiz ma'lumotlarini tahrirlang"
-        actions={<Button className="bg-primary text-primary-foreground" onClick={handleSave} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? "Saqlanmoqda..." : "Saqlash"}</Button>} />
+        actions={<Button className="w-full bg-primary text-primary-foreground sm:w-auto" onClick={handleSave} disabled={saving}><Save className="mr-1 h-4 w-4" />{saving ? "Saqlanmoqda..." : "Saqlash"}</Button>} />
       <div className="space-y-4 rounded-lg border border-border bg-card p-5">
         <div className="space-y-2"><Label className="text-sm text-muted-foreground">Kanal nomi</Label><Input value={form.channel_name} onChange={e => setForm(f => ({ ...f, channel_name: e.target.value }))} className="bg-background border-border" /></div>
         <div className="space-y-2"><Label className="text-sm text-muted-foreground">Tavsif</Label><Textarea value={form.channel_description} onChange={e => setForm(f => ({ ...f, channel_description: e.target.value }))} className="bg-background border-border" rows={3} /></div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="space-y-2"><Label className="text-sm text-muted-foreground">Telegram</Label><Input value={form.telegram_url} onChange={e => setForm(f => ({ ...f, telegram_url: e.target.value }))} className="bg-background border-border" /></div>
           <div className="space-y-2"><Label className="text-sm text-muted-foreground">Instagram</Label><Input value={form.instagram_url} onChange={e => setForm(f => ({ ...f, instagram_url: e.target.value }))} className="bg-background border-border" /></div>
           <div className="space-y-2"><Label className="text-sm text-muted-foreground">YouTube</Label><Input value={form.youtube_url} onChange={e => setForm(f => ({ ...f, youtube_url: e.target.value }))} className="bg-background border-border" /></div>

@@ -48,8 +48,8 @@ export default function AuditLogsPage() {
     <div className="animate-fade-in">
       <PageHeader title="Audit loglari" subtitle={`${filtered.length} ta yozuv`} />
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="relative w-full flex-1 sm:min-w-[200px] sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
@@ -59,7 +59,7 @@ export default function AuditLogsPage() {
           />
         </div>
         <Select value={levelFilter} onValueChange={setLevelFilter}>
-          <SelectTrigger className="w-40 bg-card border-border">
+          <SelectTrigger className="w-full bg-card border-border sm:w-40">
             <SelectValue placeholder="Daraja" />
           </SelectTrigger>
           <SelectContent className="bg-card border-border">
@@ -70,7 +70,7 @@ export default function AuditLogsPage() {
           </SelectContent>
         </Select>
         <Select value={sourceFilter} onValueChange={setSourceFilter}>
-          <SelectTrigger className="w-40 bg-card border-border">
+          <SelectTrigger className="w-full bg-card border-border sm:w-40">
             <SelectValue placeholder="Manba" />
           </SelectTrigger>
           <SelectContent className="bg-card border-border">

@@ -49,7 +49,7 @@ export default function ContentListPage() {
       />
 
       <div className="mb-4 flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
+        <div className="relative w-full flex-1 sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Qidirish..."
             className="pl-10 bg-card border-border text-foreground" />

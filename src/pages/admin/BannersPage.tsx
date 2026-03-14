@@ -323,7 +323,7 @@ export default function BannersPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground">Tugma matni</Label>
                 <Input value={buttonText} onChange={(event) => setButtonText(event.target.value)} className="border-border bg-background" />

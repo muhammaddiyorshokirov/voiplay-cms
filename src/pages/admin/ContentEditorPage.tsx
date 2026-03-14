@@ -182,7 +182,7 @@ export default function ContentEditorPage() {
       <PageHeader
         title={isNew ? "Yangi kontent" : "Kontentni tahrirlash"}
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="ghost" onClick={() => navigate("/admin/content")} className="text-muted-foreground"><ArrowLeft className="h-4 w-4" /> Orqaga</Button>
             {!isNew && <Button variant="destructive" size="sm" onClick={handleDelete}><Trash2 className="h-4 w-4" /></Button>}
             <Button className="bg-primary text-primary-foreground" onClick={handleSave} disabled={saving}><Save className="h-4 w-4" /> {saving ? "Saqlanmoqda..." : "Saqlash"}</Button>
@@ -194,11 +194,11 @@ export default function ContentEditorPage() {
         {/* Basic Info */}
         <section className="rounded-lg border border-border bg-card p-5 space-y-4">
           <h2 className="font-heading text-lg font-semibold text-foreground">Asosiy ma'lumotlar</h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2"><Label className="text-muted-foreground text-sm">Nomi *</Label><Input value={form.title || ""} onChange={e => updateField("title", e.target.value)} className="bg-background border-border" /></div>
             <div className="space-y-2"><Label className="text-muted-foreground text-sm">Muqobil nomi</Label><Input value={form.alternative_title || ""} onChange={e => updateField("alternative_title", e.target.value)} className="bg-background border-border" /></div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2"><Label className="text-muted-foreground text-sm">Slug *</Label><Input value={form.slug || ""} onChange={e => updateField("slug", e.target.value)} className="bg-background border-border" /></div>
             <div className="space-y-2"><Label className="text-muted-foreground text-sm">Subtitle</Label><Input value={form.subtitle || ""} onChange={e => updateField("subtitle", e.target.value)} className="bg-background border-border" /></div>
           </div>
@@ -232,7 +232,7 @@ export default function ContentEditorPage() {
         {/* Classification */}
         <section className="rounded-lg border border-border bg-card p-5 space-y-4">
           <h2 className="font-heading text-lg font-semibold text-foreground">Turkumlash</h2>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="space-y-2">
               <Label className="text-muted-foreground text-sm">Turi *</Label>
               <Select value={form.type} onValueChange={v => updateField("type", v as Enums<"content_type">)}>
@@ -267,13 +267,13 @@ export default function ContentEditorPage() {
               </Select>
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-2"><Label className="text-muted-foreground text-sm">Yil</Label><Input type="number" value={form.year || ""} onChange={e => updateField("year", Number(e.target.value) || null)} className="bg-background border-border" /></div>
             <div className="space-y-2"><Label className="text-muted-foreground text-sm">Davomiylik (min)</Label><Input type="number" value={form.duration_minutes || ""} onChange={e => updateField("duration_minutes", Number(e.target.value) || null)} className="bg-background border-border" /></div>
             <div className="space-y-2"><Label className="text-muted-foreground text-sm">Yosh chegarasi</Label><Input value={form.age_rating || ""} onChange={e => updateField("age_rating", e.target.value)} className="bg-background border-border" /></div>
             <div className="space-y-2"><Label className="text-muted-foreground text-sm">Sifat</Label><Input value={form.quality_label || ""} onChange={e => updateField("quality_label", e.target.value)} placeholder="HD / FHD" className="bg-background border-border" /></div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="space-y-2"><Label className="text-muted-foreground text-sm">Mamlakat</Label><Input value={form.country || ""} onChange={e => updateField("country", e.target.value)} className="bg-background border-border" /></div>
             <div className="space-y-2"><Label className="text-muted-foreground text-sm">Studiya</Label><Input value={form.studio || ""} onChange={e => updateField("studio", e.target.value)} className="bg-background border-border" /></div>
             <div className="space-y-2"><Label className="text-muted-foreground text-sm">IMDB reytingi</Label><Input type="number" step="0.1" value={form.imdb_rating || ""} onChange={e => updateField("imdb_rating", Number(e.target.value) || null)} className="bg-background border-border" /></div>
@@ -302,7 +302,7 @@ export default function ContentEditorPage() {
         <section className="rounded-lg border border-border bg-card p-5 space-y-4">
           <h2 className="font-heading text-lg font-semibold text-foreground">Media fayllar</h2>
           <p className="text-xs text-muted-foreground">Rasm: max {uploadLimits.max_image_mb}MB · Video: max {uploadLimits.max_video_mb}MB</p>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label className="text-muted-foreground text-sm">Poster rasm</Label>
               <R2Upload folder="covers" accept="image/*" label="Poster yuklash" value={form.poster_url || ""} maxSizeMB={uploadLimits.max_image_mb} metadata={{ assetKind: "image", channelId: form.channel_id || null, channelName: selectedChannel?.channel_name || null, contentId: isNew ? null : id || null, contentTitle: form.title || form.slug || null, contentType: form.type || null, ownerUserId: selectedChannel?.owner_id || null, sourceTable: "contents", sourceColumn: "poster_url" }} onUploadComplete={(url) => updateField("poster_url", url)} />
@@ -366,7 +366,7 @@ export default function ContentEditorPage() {
         {/* Flags */}
         <section className="rounded-lg border border-border bg-card p-5 space-y-4">
           <h2 className="font-heading text-lg font-semibold text-foreground">Qo'shimcha sozlamalar</h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {[
               { key: "is_premium" as const, label: "Premium kontent" },
               { key: "is_featured" as const, label: "Tavsiya etilgan" },
@@ -381,7 +381,7 @@ export default function ContentEditorPage() {
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2"><Label className="text-muted-foreground text-sm">Jami fasllar</Label><Input type="number" value={form.total_seasons || ""} onChange={e => updateField("total_seasons", Number(e.target.value) || null)} className="bg-background border-border" /></div>
             <div className="space-y-2"><Label className="text-muted-foreground text-sm">Jami epizodlar</Label><Input type="number" value={form.total_episodes || ""} onChange={e => updateField("total_episodes", Number(e.target.value) || null)} className="bg-background border-border" /></div>
           </div>

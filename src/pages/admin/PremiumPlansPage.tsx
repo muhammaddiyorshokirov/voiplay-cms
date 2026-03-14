@@ -117,23 +117,23 @@ export default function PremiumPlansPage() {
         <DialogContent className="bg-card border-border max-w-lg max-h-[90vh]">
           <DialogHeader><DialogTitle className="font-heading text-foreground">{editing ? "Rejani tahrirlash" : "Yangi reja"}</DialogTitle></DialogHeader>
           <div className="space-y-4 overflow-y-auto pr-2" style={{ maxHeight: "calc(90vh - 100px)" }}>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Nomi *</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="bg-background border-border" /></div>
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Kod *</Label><Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} className="bg-background border-border" /></div>
             </div>
             <div className="space-y-2"><Label className="text-sm text-muted-foreground">Tavsif</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} className="bg-background border-border" /></div>
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Kunlar *</Label><Input type="number" value={form.days} onChange={e => setForm(f => ({ ...f, days: Number(e.target.value) }))} className="bg-background border-border" /></div>
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Aktiv narx (so'm)</Label><Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: Number(e.target.value) }))} className="bg-background border-border" /></div>
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Eski narx (so'm)</Label><Input type="number" value={form.old_price} onChange={e => setForm(f => ({ ...f, old_price: Number(e.target.value) }))} className="bg-background border-border" /></div>
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Chegirma %</Label><Input type="number" value={form.discount_percent} onChange={e => setForm(f => ({ ...f, discount_percent: Number(e.target.value) }))} className="bg-background border-border" /></div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Max qurilmalar</Label><Input type="number" value={form.max_devices} onChange={e => setForm(f => ({ ...f, max_devices: Number(e.target.value) }))} className="bg-background border-border" /></div>
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Badge matni</Label><Input value={form.badge_text} onChange={e => setForm(f => ({ ...f, badge_text: e.target.value }))} placeholder="Masalan: Eng ommabop" className="bg-background border-border" /></div>
             </div>
             <div className="space-y-2"><Label className="text-sm text-muted-foreground">Afzalliklar (JSON massiv)</Label><Textarea value={form.benefits} onChange={e => setForm(f => ({ ...f, benefits: e.target.value }))} rows={2} className="bg-background border-border font-mono text-xs" placeholder='["Reklama yo&apos;q", "HD sifat"]' /></div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {([
                 ["download_allowed", "Yuklab olish"],
                 ["is_active", "Faol"],

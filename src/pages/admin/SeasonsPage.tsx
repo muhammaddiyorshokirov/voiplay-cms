@@ -127,7 +127,7 @@ export default function SeasonsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Fasl raqami</Label><Input type="number" value={seasonNumber} onChange={(e) => setSeasonNumber(Number(e.target.value))} className="bg-background border-border" /></div>
               <div className="space-y-2"><Label className="text-sm text-muted-foreground">Nomi</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} className="bg-background border-border" /></div>
             </div>

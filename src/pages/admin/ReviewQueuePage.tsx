@@ -376,7 +376,7 @@ export default function ReviewQueuePage() {
               </div>
 
               {selectedRequest.request_type === "content" ? (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div><span className="text-muted-foreground">Nomi:</span> <span className="text-foreground ml-1 font-medium">{selectedRequest.title}</span></div>
                   <div><span className="text-muted-foreground">Muqobil:</span> <span className="text-foreground ml-1">{selectedRequest.alternative_title || "—"}</span></div>
                   <div><span className="text-muted-foreground">Turi:</span> <span className="text-foreground ml-1">{typeLabels[selectedRequest.content_type] || "—"}</span></div>
@@ -390,7 +390,7 @@ export default function ReviewQueuePage() {
                   <div><span className="text-muted-foreground">Subtitr:</span> <span className="text-foreground ml-1">{selectedRequest.has_subtitle ? "Ha" : "Yo'q"}</span></div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div><span className="text-muted-foreground">Fasl:</span> <span className="text-foreground ml-1 font-medium">{selectedRequest.season_number}-fasl</span></div>
                   <div><span className="text-muted-foreground">Nomi:</span> <span className="text-foreground ml-1">{selectedRequest.season_title || "—"}</span></div>
                 </div>
@@ -434,7 +434,7 @@ export default function ReviewQueuePage() {
                 Yuborilgan: {new Date(selectedRequest.created_at).toLocaleString("uz")}
               </p>
 
-              <div className="flex gap-2 pt-2">
+              <div className="flex flex-col gap-2 pt-2 sm:flex-row">
                 <Button className="flex-1 bg-primary text-primary-foreground" onClick={() => { setRequestDetailOpen(false); openApproveRequest(selectedRequest); }}>
                   <CheckCircle className="mr-2 h-4 w-4" /> Tasdiqlash
                 </Button>
@@ -509,15 +509,15 @@ export default function ReviewQueuePage() {
           </DialogHeader>
           {selectedContent && (
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-              <div className="flex gap-4">
+              <div className="flex flex-col gap-4 sm:flex-row">
                 {selectedContent.poster_url && <img src={selectedContent.poster_url} alt="" className="h-32 w-24 rounded-md object-cover" />}
                 <div className="flex-1 space-y-2">
                   <h3 className="text-lg font-heading font-semibold text-foreground">{selectedContent.title}</h3>
                   {selectedContent.alternative_title && <p className="text-sm text-muted-foreground">{selectedContent.alternative_title}</p>}
-                  <div className="flex gap-2"><StatusBadge status={selectedContent.publish_status} /><StatusBadge status={selectedContent.status} /></div>
+                  <div className="flex flex-wrap gap-2"><StatusBadge status={selectedContent.publish_status} /><StatusBadge status={selectedContent.status} /></div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
                 <div><span className="text-muted-foreground">Turi:</span> <span className="text-foreground ml-1">{typeLabels[selectedContent.type]}</span></div>
                 <div><span className="text-muted-foreground">Yil:</span> <span className="text-foreground ml-1">{selectedContent.year || "—"}</span></div>
                 <div><span className="text-muted-foreground">Mamlakat:</span> <span className="text-foreground ml-1">{selectedContent.country || "—"}</span></div>
@@ -526,7 +526,7 @@ export default function ReviewQueuePage() {
               {selectedContent.description && (
                 <div><p className="text-sm text-muted-foreground mb-1">Tavsif:</p><p className="text-sm text-foreground leading-relaxed">{selectedContent.description}</p></div>
               )}
-              <div className="flex gap-2 pt-2">
+              <div className="flex flex-col gap-2 pt-2 sm:flex-row">
                 <Button className="flex-1 bg-primary text-primary-foreground" onClick={() => { approveContent(selectedContent.id); setDetailOpen(false); }}>
                   <CheckCircle className="mr-2 h-4 w-4" /> Tasdiqlash
                 </Button>

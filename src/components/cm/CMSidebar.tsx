@@ -16,7 +16,12 @@ const navItems = [
   { title: "Kanal sozlamalari", url: "/cm/channel", icon: Radio },
 ];
 
-export function CMSidebar() {
+interface CMSidebarProps {
+  mobile?: boolean;
+  onNavigate?: () => void;
+}
+
+export function CMSidebar({ mobile = false, onNavigate }: CMSidebarProps) {
   const location = useLocation();
   const { profile, signOut } = useAuth();
 
@@ -26,7 +31,10 @@ export function CMSidebar() {
   };
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-60 flex-col border-r border-border bg-sidebar">
+    <aside className={cn(
+      "flex w-60 flex-col border-r border-border bg-sidebar",
+      mobile ? "h-full min-h-0" : "fixed left-0 top-0 z-40 hidden h-screen lg:flex",
+    )}>
       <div className="flex h-16 items-center gap-2 border-b border-border px-5">
         <Tv className="h-7 w-7 text-primary" />
         <span className="font-heading text-lg font-bold text-foreground">VoiPlay</span>
@@ -40,6 +48,7 @@ export function CMSidebar() {
               <NavLink
                 to={item.url}
                 end={item.url === "/cm"}
+                onClick={onNavigate}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-heading font-medium transition-colors",
                   "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
@@ -63,7 +72,7 @@ export function CMSidebar() {
             <p className="truncate text-sm font-medium text-foreground">{profile?.full_name || "Content Maker"}</p>
             <p className="text-xs text-muted-foreground">Kontent yaratuvchi</p>
           </div>
-          <button onClick={signOut} className="text-muted-foreground hover:text-destructive transition-colors">
+          <button onClick={() => { onNavigate?.(); signOut(); }} className="text-muted-foreground hover:text-destructive transition-colors">
             <LogOut className="h-4 w-4" />
           </button>
         </div>

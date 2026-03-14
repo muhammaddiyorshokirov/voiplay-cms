@@ -30,7 +30,7 @@ export default function SubscriptionsPage() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Obunalar" subtitle={`${filtered.length} ta obuna`} />
-      <div className="mb-4 relative max-w-sm">
+      <div className="relative mb-4 w-full sm:max-w-sm">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Qidirish..." className="pl-10 bg-card border-border" />
       </div>

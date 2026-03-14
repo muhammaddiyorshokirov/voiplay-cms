@@ -821,7 +821,7 @@ export default function EpisodesPage() {
               }
             />
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground">Nomi</Label>
                 <Input value={form.title || ""} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} className="border-border bg-background" />
@@ -838,7 +838,7 @@ export default function EpisodesPage() {
               <Textarea value={form.description || ""} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} rows={3} className="border-border bg-background" />
             </div>
 
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground">Intro start (sek)</Label>
                 <Input type="number" value={form.intro_start_seconds || ""} onChange={(event) => setForm((current) => ({ ...current, intro_start_seconds: Number(event.target.value) || undefined }))} className="border-border bg-background" />
@@ -949,7 +949,7 @@ export default function EpisodesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {([
                 ["is_published", "Nashr qilingan"],
                 ["is_premium", "Premium"],
