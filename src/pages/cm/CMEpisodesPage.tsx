@@ -177,15 +177,22 @@ export default function CMEpisodesPage() {
         if (!active) return;
 
         setMediaJob(response.job);
-        setForm((current) => ({
-          ...current,
-          video_url: response.job.result_video_url || current.video_url || "",
-          subtitle_url:
-            response.job.result_subtitle_url || current.subtitle_url || "",
-          stream_url: response.job.result_stream_url || current.stream_url || "",
-          duration_seconds:
-            response.job.duration_seconds ?? current.duration_seconds,
-        }));
+        setForm((current) => {
+          const nextVideoUrl =
+            response.job.status === "completed" && response.job.result_stream_url
+              ? response.job.result_video_url ?? ""
+              : response.job.result_video_url ?? current.video_url ?? "";
+
+          return {
+            ...current,
+            video_url: nextVideoUrl,
+            subtitle_url:
+              response.job.result_subtitle_url ?? current.subtitle_url ?? "",
+            stream_url: response.job.result_stream_url ?? current.stream_url ?? "",
+            duration_seconds:
+              response.job.duration_seconds ?? current.duration_seconds,
+          };
+        });
 
         if (
           response.job.status !== terminalStatusRef.current &&
@@ -1094,7 +1101,7 @@ export default function CMEpisodesPage() {
                 <p className="text-xs text-muted-foreground">{streamHelperText}</p>
                 <StorageAssetPicker
                   title="Oldingi video faylni tanlash"
-                  selectedUrl={form.video_url || ""}
+                  selectedUrl={form.video_url || form.stream_url || ""}
                   assetKinds={["video"]}
                   ownerUserId={user?.id || null}
                   channelId={selectedContent?.channel_id || null}

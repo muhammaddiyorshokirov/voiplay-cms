@@ -106,6 +106,7 @@ const App = () => (
                 <Route index element={<CMDashboardPage />} />
                 <Route path="content" element={<CMContentPage />} />
                 <Route path="episodes" element={<CMEpisodesPage />} />
+                <Route path="storage" element={<StoragePage />} />
                 <Route path="channel" element={<CMChannelPage />} />
                 <Route path="requests" element={<CMRequestsPage />} />
                 <Route path="media-queue" element={<CMMediaQueuePage />} />

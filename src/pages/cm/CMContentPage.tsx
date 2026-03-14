@@ -45,6 +45,7 @@ import {
   type CMContentRow,
 } from "@/lib/cmWorkspace";
 import { formatBytes } from "@/lib/storageAssets";
+import type { Tables } from "@/integrations/supabase/types";
 
 const contentTypes = [
   { value: "anime", label: "Anime" },
@@ -55,6 +56,7 @@ const contentTypes = [
 const ageRatings = ["0+", "6+", "12+", "16+", "18+"];
 
 type RequestType = "content" | "season";
+type Genre = Tables<"genres">;
 
 type RequestFormState = {
   channel_id: string;
@@ -113,6 +115,8 @@ export default function CMContentPage() {
   const { user } = useAuth();
   const [channels, setChannels] = useState<CMChannelOption[]>([]);
   const [contents, setContents] = useState<CMContentRow[]>([]);
+  const [genres, setGenres] = useState<Genre[]>([]);
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [pendingRequests, setPendingRequests] = useState(0);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -125,14 +129,20 @@ export default function CMContentPage() {
 
     setLoading(true);
     try {
-      const ownedChannels = await fetchOwnedChannels(user.id);
-      const ownedContents = await fetchOwnedContents(
-        ownedChannels.map((channel) => channel.id),
-      );
-      const requests = await fetchOwnedRequests(user.id);
+      const [ownedChannels, genreRes] = await Promise.all([
+        fetchOwnedChannels(user.id),
+        supabase.from("genres").select("*").order("name"),
+      ]);
+      const [ownedContents, requests] = await Promise.all([
+        fetchOwnedContents(ownedChannels.map((channel) => channel.id)),
+        fetchOwnedRequests(user.id),
+      ]);
+
+      if (genreRes.error) throw genreRes.error;
 
       setChannels(ownedChannels);
       setContents(ownedContents);
+      setGenres(genreRes.data || []);
       setPendingRequests(requests.filter((request) => request.status === "pending").length);
       setForm((current) => ({
         ...current,
@@ -147,6 +157,7 @@ export default function CMContentPage() {
       );
       setChannels([]);
       setContents([]);
+      setGenres([]);
       setPendingRequests(0);
     } finally {
       setLoading(false);
@@ -184,6 +195,7 @@ export default function CMContentPage() {
   const resetForm = useCallback(
     (type: RequestType) => {
       setRequestType(type);
+      setSelectedGenres([]);
       setForm({
         ...initialFormState,
         channel_id: channels[0]?.id || "",
@@ -230,6 +242,7 @@ export default function CMContentPage() {
           form.alternative_title.trim().slice(0, 300) || null;
         payload.content_type = form.content_type as TablesInsert<"content_requests">["content_type"];
         payload.description = form.description.trim().slice(0, 5000) || null;
+        payload.genre_ids = selectedGenres.length > 0 ? selectedGenres : null;
         payload.year = form.year ? Number(form.year) : null;
         payload.country = form.country.trim().slice(0, 100) || null;
         payload.studio = form.studio.trim().slice(0, 200) || null;
@@ -514,6 +527,38 @@ export default function CMContentPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm text-muted-foreground">Janrlar</Label>
+                    <div className="flex min-h-[42px] flex-wrap gap-2 rounded-md border border-border bg-background px-3 py-2">
+                      {genres.length === 0 ? (
+                        <span className="text-sm text-muted-foreground">Janrlar yuklanmagan</span>
+                      ) : (
+                        genres.map((genre) => {
+                          const selected = selectedGenres.includes(genre.id);
+                          return (
+                            <button
+                              key={genre.id}
+                              type="button"
+                              onClick={() =>
+                                setSelectedGenres((current) =>
+                                  selected
+                                    ? current.filter((item) => item !== genre.id)
+                                    : [...current, genre.id],
+                                )
+                              }
+                              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                selected
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-muted text-muted-foreground hover:text-foreground"
+                              }`}
+                            >
+                              {genre.name}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label className="text-sm text-muted-foreground">

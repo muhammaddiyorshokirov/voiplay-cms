@@ -439,6 +439,7 @@ export type Database = {
           country: string | null
           created_at: string
           description: string | null
+          genre_ids: string[] | null
           has_dub: boolean | null
           has_subtitle: boolean | null
           id: string
@@ -471,6 +472,7 @@ export type Database = {
           country?: string | null
           created_at?: string
           description?: string | null
+          genre_ids?: string[] | null
           has_dub?: boolean | null
           has_subtitle?: boolean | null
           id?: string
@@ -503,6 +505,7 @@ export type Database = {
           country?: string | null
           created_at?: string
           description?: string | null
+          genre_ids?: string[] | null
           has_dub?: boolean | null
           has_subtitle?: boolean | null
           id?: string

@@ -9,8 +9,122 @@ const corsHeaders = {
 
 const encoder = new TextEncoder();
 
+type CleanupAction = "list" | "cleanup-unused";
+
+interface R2Config {
+  accessKeyId: string;
+  secretAccessKey: string;
+  bucketName: string;
+  endpoint: string;
+  publicUrl: string;
+}
+
+interface RoleContext {
+  userId: string;
+  isAdmin: boolean;
+  isContentMaker: boolean;
+}
+
+interface CleanupReference {
+  sourceTable: string;
+  sourceColumn: string;
+  recordId: string;
+  ownerUserId: string | null;
+  channelId: string | null;
+  label: string;
+}
+
+interface AssetRow {
+  id: string;
+  bucket_name: string | null;
+  object_key: string;
+  public_url: string | null;
+  file_name: string;
+  file_extension: string | null;
+  mime_type: string | null;
+  folder: string;
+  asset_kind: string | null;
+  size_bytes: number | null;
+  owner_user_id: string | null;
+  uploaded_by: string | null;
+  content_maker_channel_id: string | null;
+  content_id: string | null;
+  episode_id: string | null;
+  source_table: string | null;
+  source_column: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string | null;
+  updated_at: string | null;
+  content_maker_channels?: {
+    id: string;
+    channel_name: string | null;
+    owner_id: string | null;
+    profiles?: {
+      full_name: string | null;
+      username: string | null;
+    } | null;
+  } | null;
+  contents?: {
+    id: string;
+    title: string;
+    type?: string | null;
+  } | null;
+  episodes?: {
+    id: string;
+    title: string | null;
+    episode_number: number | null;
+  } | null;
+}
+
+interface InventoryAsset {
+  id: string;
+  bucket_name: string;
+  object_key: string;
+  public_url: string | null;
+  file_name: string;
+  file_extension: string | null;
+  mime_type: string | null;
+  folder: string;
+  asset_kind: string;
+  size_bytes: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+  source_table: string | null;
+  source_column: string | null;
+  content: AssetRow["contents"] | null;
+  episode: AssetRow["episodes"] | null;
+  channel: {
+    id: string;
+    channel_name: string | null;
+    owner_id: string | null;
+  } | null;
+  owner: {
+    full_name: string | null;
+    username: string | null;
+  } | null;
+  metadata: Record<string, unknown>;
+  is_used: boolean;
+  cleanup_candidate: boolean;
+  cleanup_reason: string | null;
+  cleanup_scope: "all" | "owner";
+  reference_label: string | null;
+}
+
+interface InventoryResult {
+  assets: InventoryAsset[];
+  summary: {
+    total_count: number;
+    total_size_bytes: number;
+    unused_count: number;
+    unused_size_bytes: number;
+  };
+}
+
 function encodeQueryValue(value: string) {
-  return encodeURIComponent(value).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
 }
 
 function getFileName(objectKey: string) {
@@ -32,11 +146,17 @@ function inferAssetKind(path: string, mimeType?: string | null) {
   const ext = getFileExtension(getFileName(path));
   const cleanMime = (mimeType || "").toLowerCase();
 
-  if (cleanMime.startsWith("image/") || ["jpg", "jpeg", "png", "gif", "webp", "avif", "svg"].includes(ext || "")) {
+  if (
+    cleanMime.startsWith("image/") ||
+    ["jpg", "jpeg", "png", "gif", "webp", "avif", "svg"].includes(ext || "")
+  ) {
     return "image";
   }
 
-  if (cleanMime.startsWith("video/") || ["mp4", "webm", "mkv", "mov", "m4v", "m3u8", "ts", "m4s"].includes(ext || "")) {
+  if (
+    cleanMime.startsWith("video/") ||
+    ["mp4", "webm", "mkv", "mov", "m4v", "m3u8", "ts", "m4s"].includes(ext || "")
+  ) {
     return "video";
   }
 
@@ -56,8 +176,33 @@ function shouldIncludeObjectKey(key: string) {
   return key.endsWith("/hls/master.m3u8");
 }
 
-async function hmac(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {
-  const cryptoKey = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+function isHlsMasterKey(key: string) {
+  return key.endsWith("/hls/master.m3u8");
+}
+
+function extractObjectKeyFromUrl(url?: string | null) {
+  if (!url) return null;
+  const clean = url.split("?")[0]?.trim() ?? "";
+  if (!clean) return null;
+
+  try {
+    return new URL(clean).pathname.replace(/^\/+/, "") || null;
+  } catch {
+    return clean.replace(/^\/+/, "") || null;
+  }
+}
+
+async function hmac(
+  key: ArrayBuffer | Uint8Array,
+  data: string,
+): Promise<ArrayBuffer> {
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    key,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
   return crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(data));
 }
 
@@ -68,81 +213,140 @@ async function sha256(data: Uint8Array): Promise<string> {
     .join("");
 }
 
-async function listBucketObjects() {
-  const R2_ACCESS_KEY_ID = Deno.env.get("R2_ACCESS_KEY_ID")!;
-  const R2_SECRET_ACCESS_KEY = Deno.env.get("R2_SECRET_ACCESS_KEY")!;
-  const R2_BUCKET_NAME = Deno.env.get("R2_BUCKET_NAME")!;
-  const R2_ENDPOINT = Deno.env.get("R2_ENDPOINT")!;
-
-  const algorithm = "AWS4-HMAC-SHA256";
+async function createSignedHeaders(options: {
+  config: R2Config;
+  method: "GET" | "DELETE";
+  url: string;
+  payloadHash: string;
+}) {
+  const { config, method, url, payloadHash } = options;
+  const date = new Date();
+  const dateStr = date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  const dateShort = dateStr.substring(0, 8);
   const region = "auto";
   const service = "s3";
-  const emptyPayloadHash = await sha256(new Uint8Array());
+  const algorithm = "AWS4-HMAC-SHA256";
+  const parsedUrl = new URL(url);
+  const canonicalUri = parsedUrl.pathname;
+  const canonicalQueryString = Array.from(parsedUrl.searchParams.entries())
+    .sort(([leftKey, leftValue], [rightKey, rightValue]) =>
+      leftKey === rightKey
+        ? leftValue.localeCompare(rightValue)
+        : leftKey.localeCompare(rightKey),
+    )
+    .map(([key, value]) => `${encodeQueryValue(key)}=${encodeQueryValue(value)}`)
+    .join("&");
+  const headerEntries: Array<[string, string]> = [
+    ["host", parsedUrl.host],
+    ["x-amz-content-sha256", payloadHash],
+    ["x-amz-date", dateStr],
+  ].sort(([left], [right]) => left.localeCompare(right));
 
-  const results: Array<{ key: string; size: number | null; lastModified: string | null }> = [];
+  const signedHeaders = headerEntries.map(([key]) => key).join(";");
+  const canonicalHeaders = headerEntries
+    .map(([key, value]) => `${key}:${value}`)
+    .join("\n") + "\n";
+
+  const canonicalRequest = [
+    method,
+    canonicalUri,
+    canonicalQueryString,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join("\n");
+
+  const credentialScope = `${dateShort}/${region}/${service}/aws4_request`;
+  const canonicalRequestHash = await sha256(encoder.encode(canonicalRequest));
+  const stringToSign = [
+    algorithm,
+    dateStr,
+    credentialScope,
+    canonicalRequestHash,
+  ].join("\n");
+
+  let signingKey = await hmac(
+    encoder.encode(`AWS4${config.secretAccessKey}`),
+    dateShort,
+  );
+  signingKey = await hmac(signingKey, region);
+  signingKey = await hmac(signingKey, service);
+  signingKey = await hmac(signingKey, "aws4_request");
+
+  const signatureBytes = await hmac(signingKey, stringToSign);
+  const signature = Array.from(new Uint8Array(signatureBytes))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+
+  return {
+    Authorization: `${algorithm} Credential=${config.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+    "x-amz-content-sha256": payloadHash,
+    "x-amz-date": dateStr,
+  };
+}
+
+async function deleteObjectFromR2(config: R2Config, key: string) {
+  const url = `${config.endpoint}/${config.bucketName}/${key}`;
+  const payloadHash = await sha256(new Uint8Array());
+  const headers = await createSignedHeaders({
+    config,
+    method: "DELETE",
+    url,
+    payloadHash,
+  });
+
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers,
+  });
+
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`R2 delete failed for ${key}: ${await response.text()}`);
+  }
+}
+
+async function listBucketObjects(config: R2Config) {
+  const emptyPayloadHash = await sha256(new Uint8Array());
+  const results: Array<{
+    key: string;
+    size: number | null;
+    lastModified: string | null;
+  }> = [];
   let continuationToken: string | null = null;
 
   while (true) {
     const params = [
       ["list-type", "2"],
       ["max-keys", "1000"],
-      ...(continuationToken ? [["continuation-token", continuationToken] as [string, string]] : []),
-    ].sort(([a], [b]) => a.localeCompare(b));
+      ...(continuationToken
+        ? [["continuation-token", continuationToken] as [string, string]]
+        : []),
+    ].sort(([left], [right]) => left.localeCompare(right));
 
-    const canonicalQueryString = params.map(([key, value]) => `${encodeQueryValue(key)}=${encodeQueryValue(value)}`).join("&");
-    const requestUrl = `${R2_ENDPOINT}/${R2_BUCKET_NAME}?${canonicalQueryString}`;
-
-    const date = new Date();
-    const dateStr = date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-    const dateShort = dateStr.substring(0, 8);
-    const parsedUrl = new URL(requestUrl);
-    const canonicalUri = parsedUrl.pathname;
-    const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
-    const canonicalHeaders = [`host:${parsedUrl.host}`, `x-amz-content-sha256:${emptyPayloadHash}`, `x-amz-date:${dateStr}`].join("\n") + "\n";
-
-    const canonicalRequest = [
-      "GET",
-      canonicalUri,
-      canonicalQueryString,
-      canonicalHeaders,
-      signedHeaders,
-      emptyPayloadHash,
-    ].join("\n");
-
-    const credentialScope = `${dateShort}/${region}/${service}/aws4_request`;
-    const canonicalRequestHash = await sha256(encoder.encode(canonicalRequest));
-    const stringToSign = [algorithm, dateStr, credentialScope, canonicalRequestHash].join("\n");
-
-    let signingKey = await hmac(encoder.encode(`AWS4${R2_SECRET_ACCESS_KEY}`), dateShort);
-    signingKey = await hmac(signingKey, region);
-    signingKey = await hmac(signingKey, service);
-    signingKey = await hmac(signingKey, "aws4_request");
-
-    const signatureBytes = await hmac(signingKey, stringToSign);
-    const signature = Array.from(new Uint8Array(signatureBytes))
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
-
-    const authorization = `${algorithm} Credential=${R2_ACCESS_KEY_ID}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+    const canonicalQueryString = params
+      .map(([key, value]) => `${encodeQueryValue(key)}=${encodeQueryValue(value)}`)
+      .join("&");
+    const requestUrl = `${config.endpoint}/${config.bucketName}?${canonicalQueryString}`;
+    const headers = await createSignedHeaders({
+      config,
+      method: "GET",
+      url: requestUrl,
+      payloadHash: emptyPayloadHash,
+    });
 
     const response = await fetch(requestUrl, {
       method: "GET",
-      headers: {
-        "x-amz-content-sha256": emptyPayloadHash,
-        "x-amz-date": dateStr,
-        Authorization: authorization,
-      },
+      headers,
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`R2 list failed: ${errorText}`);
+      throw new Error(`R2 list failed: ${await response.text()}`);
     }
 
     const xml = await response.text();
     const document = new DOMParser().parseFromString(xml, "application/xml");
-
     const objectNodes = Array.from(document.querySelectorAll("Contents"));
+
     for (const node of objectNodes) {
       const key = node.querySelector("Key")?.textContent?.trim();
       if (!key) continue;
@@ -155,8 +359,11 @@ async function listBucketObjects() {
       });
     }
 
-    const isTruncated = document.querySelector("IsTruncated")?.textContent?.trim() === "true";
-    continuationToken = document.querySelector("NextContinuationToken")?.textContent?.trim() || null;
+    const isTruncated =
+      document.querySelector("IsTruncated")?.textContent?.trim() === "true";
+    continuationToken =
+      document.querySelector("NextContinuationToken")?.textContent?.trim() ||
+      null;
 
     if (!isTruncated || !continuationToken) {
       break;
@@ -166,8 +373,69 @@ async function listBucketObjects() {
   return results;
 }
 
-async function chunkedMetadataQuery(serviceClient: ReturnType<typeof createClient>, keys: string[]) {
-  const metadataRows: Array<Record<string, unknown>> = [];
+async function listObjectKeysByPrefix(config: R2Config, prefix: string) {
+  const emptyPayloadHash = await sha256(new Uint8Array());
+  const results: string[] = [];
+  let continuationToken: string | null = null;
+
+  while (true) {
+    const params = [
+      ["list-type", "2"],
+      ["max-keys", "1000"],
+      ["prefix", prefix],
+      ...(continuationToken
+        ? [["continuation-token", continuationToken] as [string, string]]
+        : []),
+    ].sort(([left], [right]) => left.localeCompare(right));
+
+    const canonicalQueryString = params
+      .map(([key, value]) => `${encodeQueryValue(key)}=${encodeQueryValue(value)}`)
+      .join("&");
+    const requestUrl = `${config.endpoint}/${config.bucketName}?${canonicalQueryString}`;
+    const headers = await createSignedHeaders({
+      config,
+      method: "GET",
+      url: requestUrl,
+      payloadHash: emptyPayloadHash,
+    });
+
+    const response = await fetch(requestUrl, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const xml = await response.text();
+    const document = new DOMParser().parseFromString(xml, "application/xml");
+    const objectNodes = Array.from(document.querySelectorAll("Contents"));
+
+    for (const node of objectNodes) {
+      const key = node.querySelector("Key")?.textContent?.trim();
+      if (key) results.push(key);
+    }
+
+    const isTruncated =
+      document.querySelector("IsTruncated")?.textContent?.trim() === "true";
+    continuationToken =
+      document.querySelector("NextContinuationToken")?.textContent?.trim() ||
+      null;
+
+    if (!isTruncated || !continuationToken) {
+      break;
+    }
+  }
+
+  return results;
+}
+
+async function chunkedMetadataQuery(
+  serviceClient: ReturnType<typeof createClient>,
+  keys: string[],
+) {
+  const metadataRows: AssetRow[] = [];
 
   for (let index = 0; index < keys.length; index += 200) {
     const slice = keys.slice(index, index + 200);
@@ -218,14 +486,499 @@ async function chunkedMetadataQuery(serviceClient: ReturnType<typeof createClien
       )
       .in("object_key", slice);
 
-    if (error) {
-      throw error;
-    }
-
-    metadataRows.push(...(data || []));
+    if (error) throw error;
+    metadataRows.push(...((data || []) as AssetRow[]));
   }
 
   return metadataRows;
+}
+
+async function getRoleContext(
+  authClient: ReturnType<typeof createClient>,
+  serviceClient: ReturnType<typeof createClient>,
+  authHeader: string,
+): Promise<RoleContext> {
+  const accessToken = authHeader.replace(/^Bearer\s+/i, "");
+  const {
+    data: { user },
+    error: userError,
+  } = await authClient.auth.getUser(accessToken);
+
+  if (userError || !user) {
+    throw new Error("Unauthorized");
+  }
+
+  const { data: roles, error: rolesError } = await serviceClient
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id);
+
+  if (rolesError) throw rolesError;
+
+  const roleNames = (roles || []).map((row) => String(row.role));
+  const isAdmin = roleNames.includes("admin");
+  const isContentMaker = roleNames.includes("content_maker");
+
+  if (!isAdmin && !isContentMaker) {
+    throw new Error("Forbidden");
+  }
+
+  return {
+    userId: user.id,
+    isAdmin,
+    isContentMaker,
+  };
+}
+
+function addReference(
+  references: Map<string, CleanupReference[]>,
+  url: string | null | undefined,
+  reference: Omit<CleanupReference, "recordId"> & { recordId: string },
+) {
+  const key = extractObjectKeyFromUrl(url);
+  if (!key) return;
+  const items = references.get(key) || [];
+  items.push(reference);
+  references.set(key, items);
+}
+
+function formatReferenceLabel(reference: CleanupReference) {
+  switch (reference.sourceTable) {
+    case "contents":
+      return `Kontent ${reference.sourceColumn}`;
+    case "episodes":
+      return `Epizod ${reference.sourceColumn}`;
+    case "content_requests":
+      return `So'rov ${reference.sourceColumn}`;
+    case "content_maker_channels":
+      return `Kanal ${reference.sourceColumn}`;
+    case "banners":
+      return `Banner ${reference.sourceColumn}`;
+    default:
+      return `${reference.sourceTable}.${reference.sourceColumn}`;
+  }
+}
+
+async function buildReferenceMap(
+  serviceClient: ReturnType<typeof createClient>,
+  role: RoleContext,
+) {
+  const references = new Map<string, CleanupReference[]>();
+  const ownedChannelIds = new Set<string>();
+  const channelOwnerById = new Map<string, string | null>();
+
+  let channelQuery = serviceClient
+    .from("content_maker_channels")
+    .select("id, owner_id, channel_name, channel_logo_url, channel_banner_url");
+
+  if (!role.isAdmin) {
+    channelQuery = channelQuery.eq("owner_id", role.userId);
+  }
+
+  const { data: channels, error: channelsError } = await channelQuery;
+  if (channelsError) throw channelsError;
+
+  for (const channel of channels || []) {
+    ownedChannelIds.add(channel.id);
+    channelOwnerById.set(channel.id, channel.owner_id || null);
+
+    addReference(references, channel.channel_logo_url, {
+      sourceTable: "content_maker_channels",
+      sourceColumn: "channel_logo_url",
+      recordId: channel.id,
+      ownerUserId: channel.owner_id || null,
+      channelId: channel.id,
+      label: channel.channel_name || "Kanal logosi",
+    });
+    addReference(references, channel.channel_banner_url, {
+      sourceTable: "content_maker_channels",
+      sourceColumn: "channel_banner_url",
+      recordId: channel.id,
+      ownerUserId: channel.owner_id || null,
+      channelId: channel.id,
+      label: channel.channel_name || "Kanal banneri",
+    });
+  }
+
+  let contentsQuery = serviceClient
+    .from("contents")
+    .select("id, title, channel_id, deleted_at, poster_url, banner_url, thumbnail_url, trailer_url");
+  if (!role.isAdmin) {
+    const channelIds = [...ownedChannelIds];
+    if (channelIds.length === 0) {
+      return { references };
+    }
+    contentsQuery = contentsQuery.in("channel_id", channelIds);
+  }
+
+  const { data: contents, error: contentsError } = await contentsQuery;
+  if (contentsError) throw contentsError;
+
+  for (const content of contents || []) {
+    if (content.deleted_at) continue;
+    const ownerUserId = content.channel_id
+      ? channelOwnerById.get(content.channel_id) || null
+      : null;
+
+    addReference(references, content.poster_url, {
+      sourceTable: "contents",
+      sourceColumn: "poster_url",
+      recordId: content.id,
+      ownerUserId,
+      channelId: content.channel_id || null,
+      label: content.title || "Kontent posteri",
+    });
+    addReference(references, content.banner_url, {
+      sourceTable: "contents",
+      sourceColumn: "banner_url",
+      recordId: content.id,
+      ownerUserId,
+      channelId: content.channel_id || null,
+      label: content.title || "Kontent banneri",
+    });
+    addReference(references, content.thumbnail_url, {
+      sourceTable: "contents",
+      sourceColumn: "thumbnail_url",
+      recordId: content.id,
+      ownerUserId,
+      channelId: content.channel_id || null,
+      label: content.title || "Kontent thumbnailli",
+    });
+    addReference(references, content.trailer_url, {
+      sourceTable: "contents",
+      sourceColumn: "trailer_url",
+      recordId: content.id,
+      ownerUserId,
+      channelId: content.channel_id || null,
+      label: content.title || "Kontent treyleri",
+    });
+  }
+
+  let episodesQuery = serviceClient
+    .from("episodes")
+    .select("id, title, episode_number, channel_id, video_url, stream_url, thumbnail_url, subtitle_url");
+  if (!role.isAdmin) {
+    const channelIds = [...ownedChannelIds];
+    if (channelIds.length === 0) {
+      return { references };
+    }
+    episodesQuery = episodesQuery.in("channel_id", channelIds);
+  }
+
+  const { data: episodes, error: episodesError } = await episodesQuery;
+  if (episodesError) throw episodesError;
+
+  for (const episode of episodes || []) {
+    const ownerUserId = episode.channel_id
+      ? channelOwnerById.get(episode.channel_id) || null
+      : null;
+    const label = episode.title || `${episode.episode_number || "?"}-qism`;
+
+    addReference(references, episode.video_url, {
+      sourceTable: "episodes",
+      sourceColumn: "video_url",
+      recordId: episode.id,
+      ownerUserId,
+      channelId: episode.channel_id || null,
+      label,
+    });
+    addReference(references, episode.stream_url, {
+      sourceTable: "episodes",
+      sourceColumn: "stream_url",
+      recordId: episode.id,
+      ownerUserId,
+      channelId: episode.channel_id || null,
+      label,
+    });
+    addReference(references, episode.thumbnail_url, {
+      sourceTable: "episodes",
+      sourceColumn: "thumbnail_url",
+      recordId: episode.id,
+      ownerUserId,
+      channelId: episode.channel_id || null,
+      label,
+    });
+    addReference(references, episode.subtitle_url, {
+      sourceTable: "episodes",
+      sourceColumn: "subtitle_url",
+      recordId: episode.id,
+      ownerUserId,
+      channelId: episode.channel_id || null,
+      label,
+    });
+  }
+
+  let requestsQuery = serviceClient
+    .from("content_requests")
+    .select("id, title, requested_by, channel_id, poster_url, banner_url, thumbnail_url, trailer_url");
+  if (!role.isAdmin) {
+    requestsQuery = requestsQuery.eq("requested_by", role.userId);
+  }
+
+  const { data: requests, error: requestsError } = await requestsQuery;
+  if (requestsError) throw requestsError;
+
+  for (const request of requests || []) {
+    const label = request.title || "Content so'rovi";
+
+    addReference(references, request.poster_url, {
+      sourceTable: "content_requests",
+      sourceColumn: "poster_url",
+      recordId: request.id,
+      ownerUserId: request.requested_by || null,
+      channelId: request.channel_id || null,
+      label,
+    });
+    addReference(references, request.banner_url, {
+      sourceTable: "content_requests",
+      sourceColumn: "banner_url",
+      recordId: request.id,
+      ownerUserId: request.requested_by || null,
+      channelId: request.channel_id || null,
+      label,
+    });
+    addReference(references, request.thumbnail_url, {
+      sourceTable: "content_requests",
+      sourceColumn: "thumbnail_url",
+      recordId: request.id,
+      ownerUserId: request.requested_by || null,
+      channelId: request.channel_id || null,
+      label,
+    });
+    addReference(references, request.trailer_url, {
+      sourceTable: "content_requests",
+      sourceColumn: "trailer_url",
+      recordId: request.id,
+      ownerUserId: request.requested_by || null,
+      channelId: request.channel_id || null,
+      label,
+    });
+  }
+
+  if (role.isAdmin) {
+    const { data: banners, error: bannersError } = await serviceClient
+      .from("banners")
+      .select("id, title, image_url");
+
+    if (bannersError) throw bannersError;
+
+    for (const banner of banners || []) {
+      addReference(references, banner.image_url, {
+        sourceTable: "banners",
+        sourceColumn: "image_url",
+        recordId: banner.id,
+        ownerUserId: null,
+        channelId: null,
+        label: banner.title || "Banner",
+      });
+    }
+  }
+
+  return { references };
+}
+
+async function buildInventory(
+  serviceClient: ReturnType<typeof createClient>,
+  r2Config: R2Config,
+  role: RoleContext,
+) {
+  const bucketObjects = (await listBucketObjects(r2Config)).filter((object) =>
+    shouldIncludeObjectKey(object.key),
+  );
+  const objectKeys = bucketObjects.map((object) => object.key);
+  const metadataRows = objectKeys.length
+    ? await chunkedMetadataQuery(serviceClient, objectKeys)
+    : [];
+  const metadataMap = new Map(metadataRows.map((row) => [row.object_key, row]));
+
+  const missingRows = bucketObjects
+    .filter((object) => !metadataMap.has(object.key))
+    .map((object) => {
+      const fileName = getFileName(object.key);
+      return {
+        bucket_name: "default",
+        object_key: object.key,
+        public_url: r2Config.publicUrl
+          ? `${r2Config.publicUrl}/${object.key}`
+          : object.key,
+        file_name: fileName,
+        file_extension: getFileExtension(fileName),
+        folder: getFolder(object.key),
+        asset_kind: inferAssetKind(object.key),
+        size_bytes: object.size,
+        metadata: {
+          discovered_from_r2: true,
+        },
+      };
+    });
+
+  if (missingRows.length) {
+    const { error: upsertError } = await serviceClient
+      .from("storage_assets")
+      .upsert(missingRows, { onConflict: "bucket_name,object_key" });
+
+    if (upsertError) throw upsertError;
+  }
+
+  const finalMetadataRows = objectKeys.length
+    ? await chunkedMetadataQuery(serviceClient, objectKeys)
+    : [];
+  const finalMetadataMap = new Map(
+    finalMetadataRows.map((row) => [row.object_key, row]),
+  );
+
+  const { references } = await buildReferenceMap(serviceClient, role);
+
+  const assets = bucketObjects
+    .map((object) => {
+      const metadata = finalMetadataMap.get(object.key) || null;
+      const assetReferences = references.get(object.key) || [];
+      const ownerUserId =
+        metadata?.owner_user_id ||
+        metadata?.content_maker_channels?.owner_id ||
+        assetReferences.find((item) => item.ownerUserId)?.ownerUserId ||
+        null;
+
+      const canAccess = role.isAdmin || ownerUserId === role.userId;
+      if (!canAccess) return null;
+
+      const isUsed = assetReferences.length > 0;
+      const cleanupCandidate = !isUsed;
+      const cleanupReason = isUsed
+        ? null
+        : metadata?.source_table && metadata?.source_column
+          ? `${metadata.source_table}.${metadata.source_column} bilan bog'lanish uzilgan`
+          : metadata?.metadata?.discovered_from_r2
+            ? "Bucketda bor, lekin tizimda bog'lanmagan"
+            : "Hech qayerda ishlatilmayapti";
+
+      return {
+        id: metadata?.id ?? object.key,
+        bucket_name: metadata?.bucket_name || "default",
+        object_key: object.key,
+        public_url:
+          metadata?.public_url ||
+          (r2Config.publicUrl ? `${r2Config.publicUrl}/${object.key}` : object.key),
+        file_name: metadata?.file_name || getFileName(object.key),
+        file_extension:
+          metadata?.file_extension || getFileExtension(getFileName(object.key)),
+        mime_type: metadata?.mime_type || null,
+        folder: metadata?.folder || getFolder(object.key),
+        asset_kind:
+          metadata?.asset_kind || inferAssetKind(object.key, metadata?.mime_type),
+        size_bytes: metadata?.size_bytes ?? object.size,
+        created_at: metadata?.created_at ?? object.lastModified,
+        updated_at: metadata?.updated_at ?? object.lastModified,
+        source_table: metadata?.source_table || null,
+        source_column: metadata?.source_column || null,
+        content: metadata?.contents || null,
+        episode: metadata?.episodes || null,
+        channel: metadata?.content_maker_channels
+          ? {
+              id: metadata.content_maker_channels.id,
+              channel_name: metadata.content_maker_channels.channel_name,
+              owner_id: metadata.content_maker_channels.owner_id,
+            }
+          : null,
+        owner: metadata?.content_maker_channels?.profiles
+          ? {
+              full_name: metadata.content_maker_channels.profiles.full_name,
+              username: metadata.content_maker_channels.profiles.username,
+            }
+          : null,
+        metadata: metadata?.metadata || {},
+        is_used: isUsed,
+        cleanup_candidate: cleanupCandidate,
+        cleanup_reason: cleanupReason,
+        cleanup_scope: role.isAdmin ? "all" : "owner",
+        reference_label: assetReferences[0]
+          ? `${formatReferenceLabel(assetReferences[0])} · ${assetReferences[0].label}`
+          : null,
+      } as InventoryAsset;
+    })
+    .filter((asset): asset is InventoryAsset => Boolean(asset))
+    .sort((left, right) => {
+      const leftDate = left.created_at ? new Date(left.created_at).getTime() : 0;
+      const rightDate = right.created_at ? new Date(right.created_at).getTime() : 0;
+      return rightDate - leftDate;
+    });
+
+  const summary = assets.reduce(
+    (accumulator, asset) => {
+      accumulator.total_count += 1;
+      accumulator.total_size_bytes += asset.size_bytes || 0;
+      if (asset.cleanup_candidate) {
+        accumulator.unused_count += 1;
+        accumulator.unused_size_bytes += asset.size_bytes || 0;
+      }
+      return accumulator;
+    },
+    {
+      total_count: 0,
+      total_size_bytes: 0,
+      unused_count: 0,
+      unused_size_bytes: 0,
+    },
+  );
+
+  return { assets, summary } as InventoryResult;
+}
+
+async function cleanupUnusedAssets(
+  serviceClient: ReturnType<typeof createClient>,
+  r2Config: R2Config,
+  inventory: InventoryResult,
+) {
+  const targets = inventory.assets.filter((asset) => asset.cleanup_candidate);
+  const affectedChannelIds = new Set<string>();
+  let deletedCount = 0;
+  let deletedBytes = 0;
+
+  for (const asset of targets) {
+    deletedBytes += asset.size_bytes || 0;
+    if (asset.channel?.id) {
+      affectedChannelIds.add(asset.channel.id);
+    }
+
+    if (isHlsMasterKey(asset.object_key)) {
+      const prefix = asset.object_key.split("/").slice(0, -1).join("/");
+      const packageKeys = await listObjectKeysByPrefix(r2Config, `${prefix}/`);
+      for (const key of packageKeys) {
+        await deleteObjectFromR2(r2Config, key);
+      }
+
+      const { error } = await serviceClient
+        .from("storage_assets")
+        .delete()
+        .like("object_key", `${prefix}/%`);
+
+      if (error) throw error;
+    } else {
+      await deleteObjectFromR2(r2Config, asset.object_key);
+      const { error } = await serviceClient
+        .from("storage_assets")
+        .delete()
+        .eq("object_key", asset.object_key);
+
+      if (error) throw error;
+    }
+
+    deletedCount += 1;
+  }
+
+  for (const channelId of affectedChannelIds) {
+    const { error } = await serviceClient.rpc(
+      "recalculate_channel_storage_usage",
+      { _channel_id: channelId },
+    );
+
+    if (error) throw error;
+  }
+
+  return {
+    deleted_count: deletedCount,
+    deleted_bytes: deletedBytes,
+  };
 }
 
 serve(async (req) => {
@@ -236,16 +989,12 @@ serve(async (req) => {
   try {
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      throw new Error("Unauthorized");
     }
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const R2_PUBLIC_URL = Deno.env.get("R2_PUBLIC_URL") || "";
 
     const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: {
@@ -254,127 +1003,49 @@ serve(async (req) => {
         },
       },
     });
-
     const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const accessToken = authHeader.replace(/^Bearer\s+/i, "");
-    const {
-      data: { user },
-      error: userError,
-    } = await authClient.auth.getUser(accessToken);
+    const role = await getRoleContext(authClient, serviceClient, authHeader);
+    const r2Config: R2Config = {
+      accessKeyId: Deno.env.get("R2_ACCESS_KEY_ID")!,
+      secretAccessKey: Deno.env.get("R2_SECRET_ACCESS_KEY")!,
+      bucketName: Deno.env.get("R2_BUCKET_NAME")!,
+      endpoint: Deno.env.get("R2_ENDPOINT")!,
+      publicUrl: Deno.env.get("R2_PUBLIC_URL") || "",
+    };
 
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const body = req.method === "POST"
+      ? await req.json().catch(() => ({}))
+      : {};
+    const action = (body?.action as CleanupAction | undefined) || "list";
+
+    const inventory = await buildInventory(serviceClient, r2Config, role);
+
+    if (action === "cleanup-unused") {
+      const result = await cleanupUnusedAssets(serviceClient, r2Config, inventory);
+      const nextInventory = await buildInventory(serviceClient, r2Config, role);
+
+      return new Response(
+        JSON.stringify({
+          ...nextInventory,
+          cleanup_result: result,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
-    const { data: adminRole, error: roleError } = await serviceClient
-      .from("user_roles")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("role", "admin")
-      .maybeSingle();
-
-    if (roleError || !adminRole) {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const bucketObjects = (await listBucketObjects()).filter((object) =>
-      shouldIncludeObjectKey(object.key),
-    );
-    const keys = bucketObjects.map((object) => object.key);
-    const existingMetadata = keys.length ? await chunkedMetadataQuery(serviceClient, keys) : [];
-    const metadataMap = new Map(existingMetadata.map((row) => [row.object_key, row]));
-
-    const missingRows = bucketObjects
-      .filter((object) => !metadataMap.has(object.key))
-      .map((object) => {
-        const fileName = getFileName(object.key);
-        return {
-          bucket_name: "default",
-          object_key: object.key,
-          public_url: R2_PUBLIC_URL ? `${R2_PUBLIC_URL}/${object.key}` : object.key,
-          file_name: fileName,
-          file_extension: getFileExtension(fileName),
-          folder: getFolder(object.key),
-          asset_kind: inferAssetKind(object.key),
-          size_bytes: object.size,
-          metadata: {
-            discovered_from_r2: true,
-          },
-        };
-      });
-
-    if (missingRows.length) {
-      const { error: insertError } = await serviceClient
-        .from("storage_assets")
-        .upsert(missingRows, { onConflict: "bucket_name,object_key" });
-
-      if (insertError) {
-        throw insertError;
-      }
-    }
-
-    const metadataRows = keys.length ? await chunkedMetadataQuery(serviceClient, keys) : [];
-    const finalMetadataMap = new Map(metadataRows.map((row) => [row.object_key, row]));
-
-    const assets = bucketObjects
-      .map((object) => {
-        const metadata = finalMetadataMap.get(object.key);
-        const channel = metadata?.content_maker_channels;
-        const ownerProfile = channel?.profiles;
-
-        return {
-          id: metadata?.id ?? object.key,
-          bucket_name: metadata?.bucket_name ?? "default",
-          object_key: object.key,
-          public_url: metadata?.public_url ?? (R2_PUBLIC_URL ? `${R2_PUBLIC_URL}/${object.key}` : object.key),
-          file_name: metadata?.file_name ?? getFileName(object.key),
-          file_extension: metadata?.file_extension ?? getFileExtension(getFileName(object.key)),
-          mime_type: metadata?.mime_type ?? null,
-          folder: metadata?.folder ?? getFolder(object.key),
-          asset_kind: metadata?.asset_kind ?? inferAssetKind(object.key, metadata?.mime_type),
-          size_bytes: metadata?.size_bytes ?? object.size,
-          created_at: metadata?.created_at ?? object.lastModified,
-          updated_at: metadata?.updated_at ?? object.lastModified,
-          source_table: metadata?.source_table ?? null,
-          source_column: metadata?.source_column ?? null,
-          content: metadata?.contents ?? null,
-          episode: metadata?.episodes ?? null,
-          channel: channel
-            ? {
-                id: channel.id,
-                channel_name: channel.channel_name,
-                owner_id: channel.owner_id,
-              }
-            : null,
-          owner: ownerProfile
-            ? {
-                full_name: ownerProfile.full_name,
-                username: ownerProfile.username,
-              }
-            : null,
-          metadata: metadata?.metadata ?? {},
-        };
-      })
-      .sort((left, right) => {
-        const leftDate = left.created_at ? new Date(left.created_at).getTime() : 0;
-        const rightDate = right.created_at ? new Date(right.created_at).getTime() : 0;
-        return rightDate - leftDate;
-      });
-
-    return new Response(JSON.stringify({ assets }), {
+    return new Response(JSON.stringify(inventory), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("R2 assets list error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
+    const message = error instanceof Error ? error.message : "Unknown error";
+    const status =
+      message === "Unauthorized" ? 401 : message === "Forbidden" ? 403 : 500;
+
+    return new Response(JSON.stringify({ error: message }), {
+      status,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

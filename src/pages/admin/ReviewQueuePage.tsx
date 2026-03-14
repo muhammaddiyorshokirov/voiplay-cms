@@ -25,6 +25,7 @@ export default function ReviewQueuePage() {
   const [draftContents, setDraftContents] = useState<Content[]>([]);
   const [unpublishedEpisodes, setUnpublishedEpisodes] = useState<Episode[]>([]);
   const [contentRequests, setContentRequests] = useState<any[]>([]);
+  const [genresById, setGenresById] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [selectedContent, setSelectedContent] = useState<Content | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -44,14 +45,18 @@ export default function ReviewQueuePage() {
 
   const fetchAll = async () => {
     setLoading(true);
-    const [contentsRes, episodesRes, requestsRes] = await Promise.all([
+    const [contentsRes, episodesRes, requestsRes, genresRes] = await Promise.all([
       supabase.from("contents").select("*").eq("publish_status", "draft").is("deleted_at", null).order("created_at", { ascending: false }),
       supabase.from("episodes").select("*, contents(title), seasons(season_number)").eq("is_published", false).order("created_at", { ascending: false }).limit(100),
       supabase.from("content_requests" as any).select("*, content_maker_channels(channel_name)").eq("status", "pending").order("created_at", { ascending: false }),
+      supabase.from("genres").select("id, name"),
     ]);
     setDraftContents(contentsRes.data || []);
     setUnpublishedEpisodes((episodesRes.data || []) as Episode[]);
     setContentRequests(requestsRes.data || []);
+    setGenresById(
+      Object.fromEntries((genresRes.data || []).map((genre) => [genre.id, genre.name])),
+    );
     setLoading(false);
   };
 
@@ -113,7 +118,7 @@ export default function ReviewQueuePage() {
     if (r.request_type === "content") {
       // Create content
       const slug = approveForm.slug.trim() || r.title?.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "untitled";
-      const { error } = await supabase.from("contents").insert({
+      const { data, error } = await supabase.from("contents").insert({
         title: r.title,
         alternative_title: r.alternative_title,
         type: r.content_type || "anime",
@@ -133,10 +138,25 @@ export default function ReviewQueuePage() {
         thumbnail_url: r.thumbnail_url,
         trailer_url: r.trailer_url,
         channel_id: r.channel_id,
-        publish_status: "draft",
+        publish_status: "published",
+        published_at: new Date().toISOString(),
         status: "upcoming",
-      });
+      }).select("id").single();
       if (error) { toast.error("Kontent yaratishda xatolik: " + error.message); return; }
+
+      if (data?.id && Array.isArray(r.genre_ids) && r.genre_ids.length > 0) {
+        const { error: genreError } = await supabase
+          .from("content_genres")
+          .insert(r.genre_ids.map((genreId: string) => ({ content_id: data.id, genre_id: genreId })));
+
+        if (genreError) {
+          await supabase.from("contents").delete().eq("id", data.id);
+          toast.error("Janrlarni saqlashda xatolik: " + genreError.message);
+          return;
+        }
+      }
+
+      r.content_id = data?.id || null;
     } else if (r.request_type === "season") {
       // Create season
       const { error } = await supabase.from("seasons").insert({
@@ -152,6 +172,7 @@ export default function ReviewQueuePage() {
     // Mark request as approved
     await supabase.from("content_requests" as any).update({
       status: "approved",
+      content_id: r.request_type === "content" ? r.content_id || null : r.content_id || null,
       admin_notes: approveForm.admin_notes.trim().slice(0, 2000) || null,
       reviewed_by: user?.id,
       reviewed_at: new Date().toISOString(),
@@ -360,6 +381,19 @@ export default function ReviewQueuePage() {
                 <div>
                   <p className="text-muted-foreground mb-1">Tavsif:</p>
                   <p className="text-foreground leading-relaxed">{selectedRequest.description || selectedRequest.season_description}</p>
+                </div>
+              )}
+
+              {selectedRequest.request_type === "content" && Array.isArray(selectedRequest.genre_ids) && selectedRequest.genre_ids.length > 0 && (
+                <div>
+                  <p className="text-muted-foreground mb-1">Janrlar:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedRequest.genre_ids.map((genreId: string) => (
+                      <span key={genreId} className="rounded-full bg-muted px-3 py-1 text-xs text-foreground">
+                        {genresById[genreId] || "Noma'lum janr"}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
 

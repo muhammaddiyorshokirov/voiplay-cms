@@ -75,6 +75,8 @@ export function EpisodeMediaPanel({
                 ? `Tanlandi: ${videoFile.name}${zipSelected ? " (HLS ZIP)" : ""}`
                 : currentVideoUrl
                   ? "Joriy source mavjud"
+                  : currentStreamUrl
+                    ? "Joriy HLS mavjud"
                   : "Yangi video tanlanmagan"}
             </span>
             {videoFile ? (
