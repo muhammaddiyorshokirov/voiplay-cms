@@ -26,6 +26,10 @@ export interface CMEpisodeRow extends Tables<"episodes"> {
 }
 
 export async function fetchOwnedChannels(userId: string) {
+  await supabase.rpc("recalculate_owner_channel_storage_usage", {
+    _owner_id: userId,
+  });
+
   const { data, error } = await supabase
     .from("content_maker_channels")
     .select("id, channel_name, status, max_storage_bytes, used_storage_bytes")

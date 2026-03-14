@@ -337,6 +337,7 @@ export type Database = {
       }
       content_maker_channels: {
         Row: {
+          base_storage_bytes: number
           channel_banner_url: string | null
           channel_description: string | null
           channel_logo_url: string | null
@@ -355,6 +356,7 @@ export type Database = {
           youtube_url: string | null
         }
         Insert: {
+          base_storage_bytes?: number
           channel_banner_url?: string | null
           channel_description?: string | null
           channel_logo_url?: string | null
@@ -373,6 +375,7 @@ export type Database = {
           youtube_url?: string | null
         }
         Update: {
+          base_storage_bytes?: number
           channel_banner_url?: string | null
           channel_description?: string | null
           channel_logo_url?: string | null
@@ -1783,6 +1786,15 @@ export type Database = {
           used_storage_bytes: number
         }[]
       }
+      recalculate_owner_channel_storage_usage: {
+        Args: { _owner_id: string }
+        Returns: {
+          channel_id: string
+          max_storage_bytes: number
+          remaining_storage_bytes: number
+          used_storage_bytes: number
+        }[]
+      }
       release_channel_storage: {
         Args: { _bytes: number; _channel_id: string }
         Returns: {
@@ -1829,6 +1841,33 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      grant_content_maker_storage: {
+        Args: {
+          _delta_bytes: number
+          _duration_days?: number | null
+          _note?: string | null
+          _owner_user_id: string
+        }
+        Returns: string
+      }
+      list_content_maker_storage_grants: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          channel_names: string | null
+          created_at: string
+          delta_bytes: number
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          note: string | null
+          owner_name: string | null
+          owner_user_id: string
+          owner_username: string | null
+          remaining_days: number | null
+          revoked_at: string | null
+          starts_at: string
+        }[]
+      }
       prepare_user_device_login: { Args: { _device_id: string }; Returns: Json }
       purchase_premium_plan: {
         Args: { _plan_id: string }
@@ -1867,6 +1906,10 @@ export type Database = {
       refresh_profile_subscription_state: {
         Args: { _profile_id: string }
         Returns: undefined
+      }
+      revoke_content_maker_storage_grant: {
+        Args: { _grant_id: string; _reason?: string | null }
+        Returns: boolean
       }
       reserve_channel_storage: {
         Args: { _bytes: number; _channel_id: string }

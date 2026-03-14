@@ -32,6 +32,12 @@ import { formatErrorMessage } from "@/lib/errorMessage";
 import { isZipFile, uploadFileToR2 } from "@/lib/r2Upload";
 import { combineUploadProgress } from "@/lib/uploadProgress";
 import {
+  clearSessionDraft,
+  readSessionDraft,
+  setEpisodeEditorActive,
+  writeSessionDraft,
+} from "@/lib/episodeDraft";
+import {
   fetchContentMakerOptions,
   fetchAdminContentOptions,
   getProfileDisplayName,
@@ -60,6 +66,35 @@ function isActiveMediaJob(job?: MediaJob | null) {
 }
 
 const ALL_CONTENT_MAKERS_VALUE = "__all__";
+const ADMIN_EPISODE_DRAFT_KEY = "voiplay:admin:episode-draft";
+const EMPTY_EPISODE_FORM: Partial<TablesInsert<"episodes">> = {
+  content_id: "",
+  season_id: "",
+  episode_number: 1,
+  title: "",
+  description: "",
+  external_id: "",
+  status: "draft",
+  is_published: false,
+  is_premium: false,
+  is_comment_enabled: true,
+  is_downloadable: false,
+  video_url: "",
+  stream_url: "",
+  thumbnail_url: "",
+  subtitle_url: "",
+  duration_seconds: undefined,
+  intro_start_seconds: undefined,
+  intro_end_seconds: undefined,
+  release_date: "",
+  premium_unlock_at: "",
+};
+
+interface AdminEpisodeDraft {
+  editing: Episode | null;
+  form: Partial<TablesInsert<"episodes">>;
+  selectedOwnerId: string;
+}
 
 export default function EpisodesPage() {
   const [episodes, setEpisodes] = useState<Episode[]>([]);
@@ -89,28 +124,7 @@ export default function EpisodesPage() {
     failTask,
   } = useUploadTracker();
 
-  const [form, setForm] = useState<Partial<TablesInsert<"episodes">>>({
-    content_id: "",
-    season_id: "",
-    episode_number: 1,
-    title: "",
-    description: "",
-    external_id: "",
-    status: "draft",
-    is_published: false,
-    is_premium: false,
-    is_comment_enabled: true,
-    is_downloadable: false,
-    video_url: "",
-    stream_url: "",
-    thumbnail_url: "",
-    subtitle_url: "",
-    duration_seconds: undefined,
-    intro_start_seconds: undefined,
-    intro_end_seconds: undefined,
-    release_date: "",
-    premium_unlock_at: "",
-  });
+  const [form, setForm] = useState<Partial<TablesInsert<"episodes">>>(() => ({ ...EMPTY_EPISODE_FORM }));
 
   const selectedContent = useMemo(
     () => contents.find((item) => item.id === form.content_id) || null,
@@ -196,6 +210,56 @@ export default function EpisodesPage() {
   }, []);
 
   useEffect(() => {
+    const draft = readSessionDraft<AdminEpisodeDraft>(ADMIN_EPISODE_DRAFT_KEY);
+    if (!draft) return;
+
+    setEditing(draft.editing || null);
+    setSelectedOwnerId(draft.selectedOwnerId || ALL_CONTENT_MAKERS_VALUE);
+    setForm({
+      ...EMPTY_EPISODE_FORM,
+      ...draft.form,
+    });
+    setDialogOpen(true);
+    toast.info("Epizod qoralamasi tiklandi. Lokal video yoki subtitle tanlangan bo'lsa, qayta tanlang.");
+  }, []);
+
+  useEffect(() => {
+    setEpisodeEditorActive(dialogOpen);
+    return () => {
+      setEpisodeEditorActive(false);
+    };
+  }, [dialogOpen]);
+
+  useEffect(() => {
+    if (!dialogOpen) return;
+
+    writeSessionDraft(ADMIN_EPISODE_DRAFT_KEY, {
+      editing,
+      form,
+      selectedOwnerId,
+    } satisfies AdminEpisodeDraft);
+  }, [dialogOpen, editing, form, selectedOwnerId]);
+
+  useEffect(() => {
+    if (!dialogOpen || typeof window === "undefined") return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      writeSessionDraft(ADMIN_EPISODE_DRAFT_KEY, {
+        editing,
+        form,
+        selectedOwnerId,
+      } satisfies AdminEpisodeDraft);
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [dialogOpen, editing, form, selectedOwnerId]);
+
+  useEffect(() => {
     if (!dialogOpen || !mediaJob?.id || !isActiveMediaJob(mediaJob)) return;
 
     let active = true;
@@ -231,6 +295,7 @@ export default function EpisodesPage() {
             setMediaSubmitting(false);
             setUploadProgress(null);
             setUploadStatus(null);
+            clearSessionDraft(ADMIN_EPISODE_DRAFT_KEY);
             setDialogOpen(false);
             void fetchAll();
           } else {
@@ -266,28 +331,7 @@ export default function EpisodesPage() {
   };
 
   const resetForm = () => {
-    setForm({
-      content_id: "",
-      season_id: "",
-      episode_number: 1,
-      title: "",
-      description: "",
-      external_id: "",
-      status: "draft",
-      is_published: false,
-      is_premium: false,
-      is_comment_enabled: true,
-      is_downloadable: false,
-      video_url: "",
-      stream_url: "",
-      thumbnail_url: "",
-      subtitle_url: "",
-      duration_seconds: undefined,
-      intro_start_seconds: undefined,
-      intro_end_seconds: undefined,
-      release_date: "",
-      premium_unlock_at: "",
-    });
+    setForm({ ...EMPTY_EPISODE_FORM });
     setSelectedOwnerId(ALL_CONTENT_MAKERS_VALUE);
     resetMediaState();
   };
@@ -621,6 +665,7 @@ export default function EpisodesPage() {
         });
       }
       toast.success("Epizod saqlandi");
+      clearSessionDraft(ADMIN_EPISODE_DRAFT_KEY);
       setDialogOpen(false);
       resetMediaState();
       await fetchAll();
@@ -712,6 +757,7 @@ export default function EpisodesPage() {
         onOpenChange={(open) => {
           setDialogOpen(open);
           if (!open) {
+            clearSessionDraft(ADMIN_EPISODE_DRAFT_KEY);
             resetMediaState();
           }
         }}

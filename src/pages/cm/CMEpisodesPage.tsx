@@ -39,6 +39,12 @@ import {
   fetchVideoProcessingSettings,
   type VideoProcessingSettings,
 } from "@/lib/appSettings";
+import {
+  clearSessionDraft,
+  readSessionDraft,
+  setEpisodeEditorActive,
+  writeSessionDraft,
+} from "@/lib/episodeDraft";
 import { formatErrorMessage } from "@/lib/errorMessage";
 import { isZipFile, uploadFileToR2 } from "@/lib/r2Upload";
 import { syncStorageAssetsByUrls } from "@/lib/storageAssets";
@@ -72,6 +78,35 @@ function isActiveMediaJob(job?: MediaJob | null) {
   );
 }
 
+const CM_EPISODE_DRAFT_KEY = "voiplay:cm:episode-draft";
+const EMPTY_EPISODE_FORM: Partial<TablesInsert<"episodes">> = {
+  content_id: "",
+  season_id: "",
+  episode_number: 1,
+  title: "",
+  description: "",
+  external_id: "",
+  status: "draft",
+  is_published: false,
+  is_premium: false,
+  is_comment_enabled: true,
+  is_downloadable: false,
+  video_url: "",
+  stream_url: "",
+  thumbnail_url: "",
+  subtitle_url: "",
+  duration_seconds: undefined,
+  intro_start_seconds: undefined,
+  intro_end_seconds: undefined,
+  release_date: "",
+  premium_unlock_at: "",
+};
+
+interface CMEpisodeDraft {
+  editing: CMEpisodeRow | null;
+  form: Partial<TablesInsert<"episodes">>;
+}
+
 export default function CMEpisodesPage() {
   const { user } = useAuth();
   const [episodes, setEpisodes] = useState<CMEpisodeRow[]>([]);
@@ -99,28 +134,7 @@ export default function CMEpisodesPage() {
     failTask,
   } = useUploadTracker();
 
-  const [form, setForm] = useState<Partial<TablesInsert<"episodes">>>({
-    content_id: "",
-    season_id: "",
-    episode_number: 1,
-    title: "",
-    description: "",
-    external_id: "",
-    status: "draft",
-    is_published: false,
-    is_premium: false,
-    is_comment_enabled: true,
-    is_downloadable: false,
-    video_url: "",
-    stream_url: "",
-    thumbnail_url: "",
-    subtitle_url: "",
-    duration_seconds: undefined,
-    intro_start_seconds: undefined,
-    intro_end_seconds: undefined,
-    release_date: "",
-    premium_unlock_at: "",
-  });
+  const [form, setForm] = useState<Partial<TablesInsert<"episodes">>>(() => ({ ...EMPTY_EPISODE_FORM }));
 
   const selectedContent = useMemo(
     () => contents.find((content) => content.id === form.content_id) || null,
@@ -167,6 +181,53 @@ export default function CMEpisodesPage() {
   }, [fetchData]);
 
   useEffect(() => {
+    const draft = readSessionDraft<CMEpisodeDraft>(CM_EPISODE_DRAFT_KEY);
+    if (!draft) return;
+
+    setEditing(draft.editing || null);
+    setForm({
+      ...EMPTY_EPISODE_FORM,
+      ...draft.form,
+    });
+    setDialogOpen(true);
+    toast.info("Epizod qoralamasi tiklandi. Lokal video yoki subtitle tanlangan bo'lsa, qayta tanlang.");
+  }, []);
+
+  useEffect(() => {
+    setEpisodeEditorActive(dialogOpen);
+    return () => {
+      setEpisodeEditorActive(false);
+    };
+  }, [dialogOpen]);
+
+  useEffect(() => {
+    if (!dialogOpen) return;
+
+    writeSessionDraft(CM_EPISODE_DRAFT_KEY, {
+      editing,
+      form,
+    } satisfies CMEpisodeDraft);
+  }, [dialogOpen, editing, form]);
+
+  useEffect(() => {
+    if (!dialogOpen || typeof window === "undefined") return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      writeSessionDraft(CM_EPISODE_DRAFT_KEY, {
+        editing,
+        form,
+      } satisfies CMEpisodeDraft);
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [dialogOpen, editing, form]);
+
+  useEffect(() => {
     if (!dialogOpen || !mediaJob?.id || !isActiveMediaJob(mediaJob)) return;
 
     let active = true;
@@ -207,6 +268,7 @@ export default function CMEpisodesPage() {
             setMediaSubmitting(false);
             setUploadProgress(null);
             setUploadStatus(null);
+            clearSessionDraft(CM_EPISODE_DRAFT_KEY);
             setDialogOpen(false);
             void fetchData();
           } else {
@@ -246,28 +308,7 @@ export default function CMEpisodesPage() {
   };
 
   const resetForm = () => {
-    setForm({
-      content_id: "",
-      season_id: "",
-      episode_number: 1,
-      title: "",
-      description: "",
-      external_id: "",
-      status: "draft",
-      is_published: false,
-      is_premium: false,
-      is_comment_enabled: true,
-      is_downloadable: false,
-      video_url: "",
-      stream_url: "",
-      thumbnail_url: "",
-      subtitle_url: "",
-      duration_seconds: undefined,
-      intro_start_seconds: undefined,
-      intro_end_seconds: undefined,
-      release_date: "",
-      premium_unlock_at: "",
-    });
+    setForm({ ...EMPTY_EPISODE_FORM });
     resetMediaState();
   };
 
@@ -620,6 +661,7 @@ export default function CMEpisodesPage() {
         });
       }
       toast.success("Epizod saqlandi");
+      clearSessionDraft(CM_EPISODE_DRAFT_KEY);
       setDialogOpen(false);
       resetMediaState();
       await fetchData();
@@ -782,7 +824,10 @@ export default function CMEpisodesPage() {
         open={dialogOpen}
         onOpenChange={(open) => {
           setDialogOpen(open);
-          if (!open) resetMediaState();
+          if (!open) {
+            clearSessionDraft(CM_EPISODE_DRAFT_KEY);
+            resetMediaState();
+          }
         }}
       >
         <DialogContent className="max-h-[90vh] max-w-3xl border-border bg-card">

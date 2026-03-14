@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { isEpisodeEditorActive } from "@/lib/episodeDraft";
 
 const STORAGE_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 
@@ -23,6 +24,7 @@ export function useStorageUsageHeartbeat({
 
     const runSync = async (ignoreVisibility = false) => {
       if (inFlightRef.current) return;
+      if (isEpisodeEditorActive()) return;
       if (!ignoreVisibility && document.hidden) return;
 
       const lastSyncedAt = Number(window.localStorage.getItem(storageKey) || 0);
@@ -64,7 +66,7 @@ export function useStorageUsageHeartbeat({
     }, STORAGE_SYNC_INTERVAL_MS);
 
     const handleVisibility = () => {
-      if (!document.hidden) {
+      if (!document.hidden && !isEpisodeEditorActive()) {
         void runSync();
       }
     };
