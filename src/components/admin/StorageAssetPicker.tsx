@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, ExternalLink, FolderOpen, FileImage, FileVideo, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -80,13 +81,36 @@ interface StorageAssetRow {
   } | null;
 }
 
-function AssetIcon({ asset }: { asset: StoragePickerAsset }) {
+function AssetIcon({
+  asset,
+  disableVideoPreview = false,
+}: {
+  asset: StoragePickerAsset;
+  disableVideoPreview?: boolean;
+}) {
   if (asset.public_url && isImageAsset(asset.asset_kind, asset.public_url)) {
-    return <img src={asset.public_url} alt={asset.file_name} className="h-full w-full object-cover" />;
+    return <img src={asset.public_url} alt={asset.file_name} loading="lazy" className="h-full w-full object-cover" />;
   }
 
   if (asset.public_url && isVideoAsset(asset.asset_kind, asset.public_url)) {
-    return <video src={asset.public_url} className="h-full w-full object-cover" muted playsInline />;
+    if (disableVideoPreview) {
+      return (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-900/80 to-slate-700/40 px-4 text-center text-muted-foreground">
+          <FileVideo className="h-10 w-10" />
+          <span className="text-xs">Mobile xavfsiz rejim: video preview o'chirilgan</span>
+        </div>
+      );
+    }
+
+    return (
+      <video
+        src={asset.public_url}
+        className="h-full w-full object-cover"
+        muted
+        playsInline
+        preload="none"
+      />
+    );
   }
 
   if (asset.asset_kind === "video") {
@@ -110,6 +134,7 @@ export function StorageAssetPicker({
   onSelect,
 }: StorageAssetPickerProps) {
   const { user, isAdmin } = useAuth();
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -118,6 +143,8 @@ export function StorageAssetPicker({
 
   const effectiveOwnerId = ownerUserId || user?.id || null;
   const canUseAllAssets = isAdmin;
+  const disableVideoPreview = isMobile;
+  const showsVideoAssets = !assetKinds || assetKinds.includes("video");
 
   useEffect(() => {
     if (!open) return;
@@ -291,6 +318,12 @@ export function StorageAssetPicker({
             )}
           </div>
 
+          {disableVideoPreview && showsVideoAssets ? (
+            <p className="text-xs text-muted-foreground">
+              Mobile xavfsiz rejim yoqilgan: video previewlar yuklanmaydi, bu episode oynasi reload bo'lib ketish xavfini kamaytiradi.
+            </p>
+          ) : null}
+
           <ScrollArea className="h-[60vh] rounded-xl border border-border">
             <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
               {loading ? (
@@ -313,7 +346,7 @@ export function StorageAssetPicker({
                     className="overflow-hidden rounded-2xl border border-border bg-background text-left transition-transform hover:-translate-y-0.5 hover:border-primary/40"
                   >
                     <div className="flex aspect-video items-center justify-center bg-muted/40">
-                      <AssetIcon asset={asset} />
+                      <AssetIcon asset={asset} disableVideoPreview={disableVideoPreview} />
                     </div>
 
                     <div className="space-y-3 p-4">
