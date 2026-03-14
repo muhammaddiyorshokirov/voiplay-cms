@@ -81,6 +81,46 @@ as $$
     and (expires_at is null or expires_at > now());
 $$;
 
+create or replace function public.get_effective_channel_storage_limit(_channel_id uuid)
+returns bigint
+language sql
+stable
+set search_path = public
+as $$
+  select greatest(
+    coalesce(channel.base_storage_bytes, 0) +
+    coalesce(public.get_active_content_maker_storage_delta(channel.owner_id), 0),
+    0
+  )::bigint
+  from public.content_maker_channels as channel
+  where channel.id = _channel_id;
+$$;
+
+create or replace function public.sync_channel_storage_limit(_channel_id uuid)
+returns bigint
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  _effective_max_storage_bytes bigint;
+begin
+  select public.get_effective_channel_storage_limit(_channel_id)
+  into _effective_max_storage_bytes;
+
+  if _effective_max_storage_bytes is null then
+    return null;
+  end if;
+
+  update public.content_maker_channels
+  set max_storage_bytes = _effective_max_storage_bytes
+  where id = _channel_id
+    and max_storage_bytes is distinct from _effective_max_storage_bytes;
+
+  return _effective_max_storage_bytes;
+end;
+$$;
+
 create or replace function public.sync_owner_channel_storage_usage(_owner_id uuid default null)
 returns integer
 language plpgsql
@@ -123,18 +163,14 @@ security definer
 set search_path = public
 as $$
 declare
-  _owner_id uuid;
+  _effective_max_storage_bytes bigint;
 begin
-  select owner_id
-  into _owner_id
-  from public.content_maker_channels
-  where id = _channel_id;
+  select public.sync_channel_storage_limit(_channel_id)
+  into _effective_max_storage_bytes;
 
-  if _owner_id is null then
+  if _effective_max_storage_bytes is null then
     return;
   end if;
-
-  perform public.sync_owner_channel_storage_usage(_owner_id);
 
   update public.content_maker_channels as channel
   set used_storage_bytes = coalesce(asset_usage.used_bytes, 0)
@@ -257,7 +293,7 @@ begin
     return;
   end if;
 
-  perform public.sync_owner_channel_storage_usage(_channel.owner_id);
+  perform public.sync_channel_storage_limit(_channel_id);
 
   select *
   into _channel
@@ -315,7 +351,7 @@ begin
     return;
   end if;
 
-  perform public.sync_owner_channel_storage_usage(_channel.owner_id);
+  perform public.sync_channel_storage_limit(_channel_id);
 
   select *
   into _channel
