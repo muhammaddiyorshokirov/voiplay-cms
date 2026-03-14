@@ -63,8 +63,7 @@ async function listAllAuthUsers(serviceClient: ReturnType<typeof createClient>) 
       })),
     );
 
-    const lastPage = data?.lastPage || page;
-    if (page >= lastPage || users.length < perPage) {
+    if (users.length < perPage) {
       break;
     }
 
