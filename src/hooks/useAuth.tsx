@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useRef, useCallback, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { User, Session } from "@supabase/supabase-js";
+import type { User, Session, AuthChangeEvent } from "@supabase/supabase-js";
 
 type AppRole = "admin" | "user" | "content_maker";
 
@@ -28,9 +28,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<AuthContextType["profile"]>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [loading, setLoading] = useState(true);
-  const initialized = useRef(false);
-  const fetchingRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const requestRef = useRef(0);
 
   const clearUserData = useCallback(() => {
     setUser(null);
@@ -40,87 +39,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchUserData = useCallback(async (userId: string) => {
-    if (fetchingRef.current === userId) return;
-    fetchingRef.current = userId;
     try {
       const [profileRes, rolesRes] = await Promise.all([
         supabase.from("profiles").select("full_name, avatar_url, username").eq("id", userId).single(),
         supabase.from("user_roles").select("role").eq("user_id", userId),
       ]);
-      if (!mountedRef.current) return;
-      if (profileRes.data) setProfile(profileRes.data);
-      if (rolesRes.data) setRoles(rolesRes.data.map((r) => r.role));
+      return {
+        profile: profileRes.data ?? null,
+        roles: (rolesRes.data ?? []).map((r) => r.role),
+      };
     } catch {
-      // Silently handle - user data will be empty
-    } finally {
-      fetchingRef.current = null;
+      return {
+        profile: null,
+        roles: [] as AppRole[],
+      };
     }
   }, []);
+
+  const applySession = useCallback(async (event: AuthChangeEvent | "GET_SESSION", nextSession: Session | null) => {
+    if (!nextSession?.user) {
+      const requestId = ++requestRef.current;
+      clearUserData();
+      if (mountedRef.current && requestRef.current === requestId) {
+        setLoading(false);
+      }
+      return;
+    }
+
+    setSession(nextSession);
+    setUser(nextSession.user);
+
+    if (event === "TOKEN_REFRESHED") {
+      return;
+    }
+
+    const requestId = ++requestRef.current;
+    setProfile(null);
+    setRoles([]);
+    setLoading(true);
+
+    const userData = await fetchUserData(nextSession.user.id);
+    if (!mountedRef.current || requestRef.current !== requestId) return;
+
+    setProfile(userData.profile);
+    setRoles(userData.roles);
+    setLoading(false);
+  }, [clearUserData, fetchUserData]);
 
   useEffect(() => {
     mountedRef.current = true;
 
-    // Set up listener FIRST (before getSession) per Supabase best practices
+    // Set up listener first so auth changes are never missed during boot.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, newSession) => {
-        if (!mountedRef.current) return;
-        
-        // Handle sign out explicitly
-        if (event === 'SIGNED_OUT') {
-          clearUserData();
-          setLoading(false);
-          return;
-        }
-        
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
-
-        if (newSession?.user) {
-          // Use setTimeout to avoid Supabase deadlock
-          setTimeout(() => {
-            if (mountedRef.current) {
-              fetchUserData(newSession.user.id);
-            }
-          }, 0);
-        } else {
-          setProfile(null);
-          setRoles([]);
-        }
-        
-        if (!initialized.current) {
-          initialized.current = true;
-          setLoading(false);
-        }
-      }
+        void applySession(event, newSession);
+      },
     );
 
-    // Then get initial session
     supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
-      if (!mountedRef.current) return;
-      
-      if (existingSession?.user) {
-        setSession(existingSession);
-        setUser(existingSession.user);
-        fetchUserData(existingSession.user.id).then(() => {
-          if (mountedRef.current && !initialized.current) {
-            initialized.current = true;
-            setLoading(false);
-          }
-        });
-      } else {
-        // No session - just mark as loaded
-        if (!initialized.current) {
-          initialized.current = true;
-          setLoading(false);
-        }
-      }
+      void applySession("GET_SESSION", existingSession);
     });
 
     return () => {
       mountedRef.current = false;
+      requestRef.current += 1;
       subscription.unsubscribe();
     };
-  }, [fetchUserData, clearUserData]);
+  }, [applySession]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });

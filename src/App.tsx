@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+import { BrowserRouter, HashRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -36,6 +36,7 @@ import CMMediaQueuePage from "@/pages/cm/CMMediaQueuePage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
+const Router = import.meta.env.PROD ? HashRouter : BrowserRouter;
 
 function Spinner() {
   return (
@@ -73,7 +74,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <Router>
         <AuthProvider>
           <UploadTrackerProvider>
             <Routes>
@@ -116,7 +117,7 @@ const App = () => (
             </Routes>
           </UploadTrackerProvider>
         </AuthProvider>
-      </BrowserRouter>
+      </Router>
     </TooltipProvider>
   </QueryClientProvider>
 );

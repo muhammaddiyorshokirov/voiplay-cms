@@ -14,15 +14,8 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   if (loading) return <div className="flex h-screen items-center justify-center bg-background"><div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>;
-  
-  // If user is logged in, redirect based on their role
-  if (user && roles.length > 0) {
-    return <Navigate to={getDashboardPath(roles)} replace />;
-  }
-  // If user exists but no roles loaded yet, wait
-  if (user && roles.length === 0) {
-    return <div className="flex h-screen items-center justify-center bg-background"><div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>;
-  }
+
+  if (user) return <Navigate to={getDashboardPath(roles)} replace />;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
