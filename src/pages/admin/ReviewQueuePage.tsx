@@ -172,7 +172,7 @@ export default function ReviewQueuePage() {
     // Mark request as approved
     await supabase.from("content_requests" as any).update({
       status: "approved",
-      content_id: r.request_type === "content" ? r.content_id || null : r.content_id || null,
+      content_id: r.content_id || null,
       admin_notes: approveForm.admin_notes.trim().slice(0, 2000) || null,
       reviewed_by: user?.id,
       reviewed_at: new Date().toISOString(),

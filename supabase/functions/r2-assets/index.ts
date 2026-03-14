@@ -812,7 +812,7 @@ async function buildInventory(
       };
     });
 
-  if (missingRows.length) {
+  if (missingRows.length && role.isAdmin) {
     const { error: upsertError } = await serviceClient
       .from("storage_assets")
       .upsert(missingRows, { onConflict: "bucket_name,object_key" });
