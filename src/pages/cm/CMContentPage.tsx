@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { STORAGE_USAGE_SYNC_EVENT } from "@/hooks/useStorageUsageHeartbeat";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { DataTable } from "@/components/admin/DataTable";
 import { StatusBadge } from "@/components/admin/StatusBadge";
@@ -166,6 +167,17 @@ export default function CMContentPage() {
 
   useEffect(() => {
     void fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    const handleStorageSync = () => {
+      void fetchData();
+    };
+
+    window.addEventListener(STORAGE_USAGE_SYNC_EVENT, handleStorageSync);
+    return () => {
+      window.removeEventListener(STORAGE_USAGE_SYNC_EVENT, handleStorageSync);
+    };
   }, [fetchData]);
 
   const selectedChannel = useMemo(
@@ -398,7 +410,7 @@ export default function CMContentPage() {
                 {selectedChannel.channel_name || "Kanal"} storage holati
               </h2>
               <p className="text-sm text-muted-foreground">
-                Kontent request media fayllari shu limit ichida hisoblanadi
+                Kontent request media fayllari shu limit ichida hisoblanadi. R2 usage har 15 minutda sync qilinadi.
               </p>
             </div>
             <div className="text-right text-xs text-muted-foreground">

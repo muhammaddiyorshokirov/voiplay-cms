@@ -9,7 +9,7 @@ const corsHeaders = {
 
 const encoder = new TextEncoder();
 
-type CleanupAction = "list" | "cleanup-unused";
+type CleanupAction = "list" | "cleanup-unused" | "sync-usage";
 
 interface R2Config {
   accessKeyId: string;
@@ -118,6 +118,13 @@ interface InventoryResult {
     unused_count: number;
     unused_size_bytes: number;
   };
+}
+
+interface StorageSyncResult {
+  synced_at: string;
+  scanned_object_count: number;
+  removed_metadata_count: number;
+  summary: InventoryResult["summary"];
 }
 
 function encodeQueryValue(value: string) {
@@ -491,6 +498,225 @@ async function chunkedMetadataQuery(
   }
 
   return metadataRows;
+}
+
+async function listScopedStorageRows(
+  serviceClient: ReturnType<typeof createClient>,
+  role: RoleContext,
+) {
+  const selectClause = `
+    id,
+    bucket_name,
+    object_key,
+    public_url,
+    file_name,
+    file_extension,
+    mime_type,
+    folder,
+    asset_kind,
+    size_bytes,
+    owner_user_id,
+    uploaded_by,
+    content_maker_channel_id,
+    content_id,
+    episode_id,
+    source_table,
+    source_column,
+    metadata,
+    created_at,
+    updated_at
+  `;
+
+  if (role.isAdmin) {
+    const { data, error } = await serviceClient
+      .from("storage_assets")
+      .select(selectClause);
+
+    if (error) throw error;
+    return (data || []) as AssetRow[];
+  }
+
+  const { data: ownedChannels, error: channelError } = await serviceClient
+    .from("content_maker_channels")
+    .select("id")
+    .eq("owner_id", role.userId);
+
+  if (channelError) throw channelError;
+
+  const channelIds = (ownedChannels || []).map((channel) => channel.id);
+  const [ownedRowsRes, channelRowsRes] = await Promise.all([
+    serviceClient
+      .from("storage_assets")
+      .select(selectClause)
+      .eq("owner_user_id", role.userId),
+    channelIds.length > 0
+      ? serviceClient
+          .from("storage_assets")
+          .select(selectClause)
+          .in("content_maker_channel_id", channelIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (ownedRowsRes.error) throw ownedRowsRes.error;
+  if (channelRowsRes.error) throw channelRowsRes.error;
+
+  const dedupedRows = new Map<string, AssetRow>();
+  for (const row of [...(ownedRowsRes.data || []), ...(channelRowsRes.data || [])]) {
+    dedupedRows.set(row.id, row as AssetRow);
+  }
+
+  return [...dedupedRows.values()];
+}
+
+async function deleteScopedStorageRows(
+  serviceClient: ReturnType<typeof createClient>,
+  rows: AssetRow[],
+) {
+  if (!rows.length) return 0;
+
+  let removedCount = 0;
+
+  for (const row of rows) {
+    if (isHlsMasterKey(row.object_key)) {
+      const prefix = row.object_key.split("/").slice(0, -1).join("/");
+      const { error } = await serviceClient
+        .from("storage_assets")
+        .delete()
+        .like("object_key", `${prefix}/%`);
+
+      if (error) throw error;
+      removedCount += 1;
+      continue;
+    }
+
+    const { error } = await serviceClient
+      .from("storage_assets")
+      .delete()
+      .eq("id", row.id);
+
+    if (error) throw error;
+    removedCount += 1;
+  }
+
+  return removedCount;
+}
+
+async function syncStorageUsage(
+  serviceClient: ReturnType<typeof createClient>,
+  r2Config: R2Config,
+  role: RoleContext,
+) {
+  const bucketObjects = (await listBucketObjects(r2Config)).filter((object) =>
+    shouldIncludeObjectKey(object.key),
+  );
+  const objectKeys = bucketObjects.map((object) => object.key);
+  const objectMap = new Map(bucketObjects.map((object) => [object.key, object]));
+  const metadataRows = await listScopedStorageRows(serviceClient, role);
+  const metadataMap = new Map(metadataRows.map((row) => [row.object_key, row]));
+
+  const missingRows = role.isAdmin
+    ? bucketObjects
+        .filter((object) => !metadataMap.has(object.key))
+        .map((object) => {
+          const fileName = getFileName(object.key);
+          return {
+            bucket_name: "default",
+            object_key: object.key,
+            public_url: r2Config.publicUrl
+              ? `${r2Config.publicUrl}/${object.key}`
+              : object.key,
+            file_name: fileName,
+            file_extension: getFileExtension(fileName),
+            folder: getFolder(object.key),
+            asset_kind: inferAssetKind(object.key),
+            size_bytes: object.size,
+            metadata: {
+              discovered_from_r2: true,
+            },
+          };
+        })
+    : [];
+
+  if (missingRows.length) {
+    const { error: insertError } = await serviceClient
+      .from("storage_assets")
+      .upsert(missingRows, { onConflict: "bucket_name,object_key" });
+
+    if (insertError) throw insertError;
+  }
+
+  const scopedRows = await listScopedStorageRows(serviceClient, role);
+
+  const staleRows = scopedRows.filter((row) => !objectMap.has(row.object_key));
+  const removedMetadataCount = await deleteScopedStorageRows(
+    serviceClient,
+    staleRows,
+  );
+
+  const rowsToRefresh = scopedRows
+    .map((row) => {
+      const object = objectMap.get(row.object_key);
+      if (!object) return null;
+
+      return {
+        ...row,
+        bucket_name: row.bucket_name || "default",
+        public_url:
+          row.public_url ||
+          (r2Config.publicUrl ? `${r2Config.publicUrl}/${row.object_key}` : row.object_key),
+        file_name: row.file_name || getFileName(row.object_key),
+        file_extension:
+          row.file_extension || getFileExtension(getFileName(row.object_key)),
+        folder: row.folder || getFolder(row.object_key),
+        asset_kind:
+          row.asset_kind || inferAssetKind(row.object_key, row.mime_type),
+        size_bytes: object.size,
+        updated_at: object.lastModified || row.updated_at,
+      };
+    })
+    .filter((row): row is AssetRow => Boolean(row));
+
+  if (rowsToRefresh.length) {
+    const { error: upsertError } = await serviceClient
+      .from("storage_assets")
+      .upsert(rowsToRefresh, { onConflict: "id" });
+
+    if (upsertError) throw upsertError;
+  }
+
+  if (role.isAdmin) {
+    const { error } = await serviceClient.rpc(
+      "recalculate_all_channel_storage_usage",
+    );
+
+    if (error) throw error;
+  } else {
+    const channelIds = [
+      ...new Set(
+        rowsToRefresh
+          .map((row) => row.content_maker_channel_id)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    ];
+
+    for (const channelId of channelIds) {
+      const { error } = await serviceClient.rpc(
+        "recalculate_channel_storage_usage",
+        { _channel_id: channelId },
+      );
+
+      if (error) throw error;
+    }
+  }
+
+  const inventory = await buildInventory(serviceClient, r2Config, role);
+
+  return {
+    synced_at: new Date().toISOString(),
+    scanned_object_count: bucketObjects.length,
+    removed_metadata_count: removedMetadataCount,
+    summary: inventory.summary,
+  } satisfies StorageSyncResult;
 }
 
 async function getRoleContext(
@@ -1019,6 +1245,13 @@ serve(async (req) => {
       ? await req.json().catch(() => ({}))
       : {};
     const action = (body?.action as CleanupAction | undefined) || "list";
+
+    if (action === "sync-usage") {
+      const result = await syncStorageUsage(serviceClient, r2Config, role);
+      return new Response(JSON.stringify(result), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const inventory = await buildInventory(serviceClient, r2Config, role);
 

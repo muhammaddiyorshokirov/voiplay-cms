@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { STORAGE_USAGE_SYNC_EVENT } from "@/hooks/useStorageUsageHeartbeat";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { StatsCard } from "@/components/admin/StatsCard";
 import { Progress } from "@/components/ui/progress";
@@ -81,6 +82,17 @@ export default function CMDashboardPage() {
 
   useEffect(() => {
     void fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    const handleStorageSync = () => {
+      void fetchData();
+    };
+
+    window.addEventListener(STORAGE_USAGE_SYNC_EVENT, handleStorageSync);
+    return () => {
+      window.removeEventListener(STORAGE_USAGE_SYNC_EVENT, handleStorageSync);
+    };
   }, [fetchData]);
 
   const summary = useMemo(() => {
@@ -240,7 +252,7 @@ export default function CMDashboardPage() {
                 Storage statistikasi
               </h2>
               <p className="text-sm text-muted-foreground">
-                Kanal bo'yicha ajratilgan va ishlatilgan joy
+                Kanal bo'yicha ajratilgan va ishlatilgan joy. Har 15 minutda R2 bilan sync qilinadi.
               </p>
             </div>
             <HardDrive className="h-5 w-5 text-primary" />

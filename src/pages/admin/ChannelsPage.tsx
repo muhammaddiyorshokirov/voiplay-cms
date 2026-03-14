@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 import { Plus, Edit, Trash2, HardDrive } from "lucide-react";
 import type { Tables, Enums } from "@/integrations/supabase/types";
+import { STORAGE_USAGE_SYNC_EVENT } from "@/hooks/useStorageUsageHeartbeat";
 import {
   bytesToGigabytes,
   formatBytes,
@@ -117,7 +118,18 @@ export default function ChannelsPage() {
   };
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
+  }, []);
+
+  useEffect(() => {
+    const handleStorageSync = () => {
+      void fetchData();
+    };
+
+    window.addEventListener(STORAGE_USAGE_SYNC_EVENT, handleStorageSync);
+    return () => {
+      window.removeEventListener(STORAGE_USAGE_SYNC_EVENT, handleStorageSync);
+    };
   }, []);
 
   const openNew = () => {
@@ -258,7 +270,7 @@ export default function ChannelsPage() {
     <div className="animate-fade-in">
       <PageHeader
         title="Kanallar"
-        subtitle={`${channels.length} ta kanal`}
+        subtitle={`${channels.length} ta kanal · storage R2 bilan har 15 minutda sync qilinadi`}
         actions={
           <Button variant="gold" onClick={openNew}>
             <Plus className="h-4 w-4" /> Yangi kanal

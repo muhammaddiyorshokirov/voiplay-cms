@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { STORAGE_USAGE_SYNC_EVENT } from "@/hooks/useStorageUsageHeartbeat";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -267,6 +268,19 @@ export default function StoragePage() {
     if (!authLoading) {
       void fetchAssets();
     }
+  }, [authLoading, user?.id, isAdmin]);
+
+  useEffect(() => {
+    const handleStorageSync = () => {
+      if (!authLoading) {
+        void fetchAssets();
+      }
+    };
+
+    window.addEventListener(STORAGE_USAGE_SYNC_EVENT, handleStorageSync);
+    return () => {
+      window.removeEventListener(STORAGE_USAGE_SYNC_EVENT, handleStorageSync);
+    };
   }, [authLoading, user?.id, isAdmin]);
 
   const handleCleanup = async () => {

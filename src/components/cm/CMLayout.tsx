@@ -4,9 +4,17 @@ import { CMSidebar } from "./CMSidebar";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu, Tv } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useStorageUsageHeartbeat } from "@/hooks/useStorageUsageHeartbeat";
 
 export function CMLayout() {
   const [navOpen, setNavOpen] = useState(false);
+  const { user, isContentMaker, isAdmin } = useAuth();
+
+  useStorageUsageHeartbeat({
+    enabled: Boolean(user?.id && (isContentMaker || isAdmin)),
+    scopeKey: `cm:${user?.id || "guest"}`,
+  });
 
   return (
     <div className="min-h-screen bg-background">
