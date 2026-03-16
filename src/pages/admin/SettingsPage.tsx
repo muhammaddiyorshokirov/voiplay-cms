@@ -77,7 +77,7 @@ export default function SettingsPage() {
                   merged.video_processing = normalizeVideoProcessingSettings(row.value);
                   break;
                 default:
-                  merged[row.key] = row.value as Settings[typeof row.key];
+                  (merged as any)[row.key] = row.value;
               }
             }
           });
