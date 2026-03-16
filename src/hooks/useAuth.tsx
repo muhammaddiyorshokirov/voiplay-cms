@@ -30,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
   const requestRef = useRef(0);
+  const currentUserIdRef = useRef<string | null>(null);
 
   const clearUserData = useCallback(() => {
     setUser(null);

@@ -35,7 +35,13 @@ import CMRequestsPage from "@/pages/cm/CMRequestsPage";
 import CMMediaQueuePage from "@/pages/cm/CMMediaQueuePage";
 import NotFound from "@/pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 const Router = import.meta.env.PROD ? HashRouter : BrowserRouter;
 
 function Spinner() {
