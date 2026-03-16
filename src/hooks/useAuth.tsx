@@ -30,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
   const requestRef = useRef(0);
+  const currentUserIdRef = useRef<string | null>(null);
 
   const clearUserData = useCallback(() => {
     setUser(null);
@@ -69,7 +70,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(nextSession);
     setUser(nextSession.user);
 
+    // Skip re-fetch if token refreshed or same user already loaded
     if (event === "TOKEN_REFRESHED") {
+      return;
+    }
+
+    if (currentUserIdRef.current === nextSession.user.id && event !== "GET_SESSION") {
       return;
     }
 
@@ -81,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const userData = await fetchUserData(nextSession.user.id);
     if (!mountedRef.current || requestRef.current !== requestId) return;
 
+    currentUserIdRef.current = nextSession.user.id;
     setProfile(userData.profile);
     setRoles(userData.roles);
     setLoading(false);

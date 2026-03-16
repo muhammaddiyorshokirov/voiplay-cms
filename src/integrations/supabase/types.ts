@@ -395,6 +395,73 @@ export type Database = {
         }
         Relationships: []
       }
+      content_maker_storage_grants: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          delta_bytes: number
+          expires_at: string | null
+          id: string
+          note: string | null
+          owner_user_id: string
+          revoked_at: string | null
+          revoked_by: string | null
+          revoked_reason: string | null
+          starts_at: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          delta_bytes: number
+          expires_at?: string | null
+          id?: string
+          note?: string | null
+          owner_user_id: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          revoked_reason?: string | null
+          starts_at?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          delta_bytes?: number
+          expires_at?: string | null
+          id?: string
+          note?: string | null
+          owner_user_id?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          revoked_reason?: string | null
+          starts_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_maker_storage_grants_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_maker_storage_grants_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_maker_storage_grants_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       content_ratings: {
         Row: {
           content_id: string
@@ -1082,6 +1149,97 @@ export type Database = {
           },
         ]
       }
+      storage_assets: {
+        Row: {
+          asset_kind: string
+          bucket_name: string
+          content_id: string | null
+          content_maker_channel_id: string | null
+          created_at: string
+          episode_id: string | null
+          file_extension: string | null
+          file_name: string
+          folder: string
+          id: string
+          metadata: Json
+          mime_type: string | null
+          object_key: string
+          owner_user_id: string | null
+          public_url: string | null
+          size_bytes: number | null
+          source_column: string | null
+          source_table: string | null
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          asset_kind?: string
+          bucket_name?: string
+          content_id?: string | null
+          content_maker_channel_id?: string | null
+          created_at?: string
+          episode_id?: string | null
+          file_extension?: string | null
+          file_name: string
+          folder?: string
+          id?: string
+          metadata?: Json
+          mime_type?: string | null
+          object_key: string
+          owner_user_id?: string | null
+          public_url?: string | null
+          size_bytes?: number | null
+          source_column?: string | null
+          source_table?: string | null
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          asset_kind?: string
+          bucket_name?: string
+          content_id?: string | null
+          content_maker_channel_id?: string | null
+          created_at?: string
+          episode_id?: string | null
+          file_extension?: string | null
+          file_name?: string
+          folder?: string
+          id?: string
+          metadata?: Json
+          mime_type?: string | null
+          object_key?: string
+          owner_user_id?: string | null
+          public_url?: string | null
+          size_bytes?: number | null
+          source_column?: string | null
+          source_table?: string | null
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storage_assets_content_id_fkey"
+            columns: ["content_id"]
+            isOneToOne: false
+            referencedRelation: "contents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "storage_assets_content_maker_channel_id_fkey"
+            columns: ["content_maker_channel_id"]
+            isOneToOne: false
+            referencedRelation: "content_maker_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "storage_assets_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscriptions: {
         Row: {
           created_at: string
@@ -1171,97 +1329,6 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      storage_assets: {
-        Row: {
-          asset_kind: string
-          bucket_name: string
-          content_id: string | null
-          content_maker_channel_id: string | null
-          created_at: string
-          episode_id: string | null
-          file_extension: string | null
-          file_name: string
-          folder: string
-          id: string
-          metadata: Json
-          mime_type: string | null
-          object_key: string
-          owner_user_id: string | null
-          public_url: string | null
-          size_bytes: number | null
-          source_column: string | null
-          source_table: string | null
-          updated_at: string
-          uploaded_by: string | null
-        }
-        Insert: {
-          asset_kind?: string
-          bucket_name?: string
-          content_id?: string | null
-          content_maker_channel_id?: string | null
-          created_at?: string
-          episode_id?: string | null
-          file_extension?: string | null
-          file_name: string
-          folder?: string
-          id?: string
-          metadata?: Json
-          mime_type?: string | null
-          object_key: string
-          owner_user_id?: string | null
-          public_url?: string | null
-          size_bytes?: number | null
-          source_column?: string | null
-          source_table?: string | null
-          updated_at?: string
-          uploaded_by?: string | null
-        }
-        Update: {
-          asset_kind?: string
-          bucket_name?: string
-          content_id?: string | null
-          content_maker_channel_id?: string | null
-          created_at?: string
-          episode_id?: string | null
-          file_extension?: string | null
-          file_name?: string
-          folder?: string
-          id?: string
-          metadata?: Json
-          mime_type?: string | null
-          object_key?: string
-          owner_user_id?: string | null
-          public_url?: string | null
-          size_bytes?: number | null
-          source_column?: string | null
-          source_table?: string | null
-          updated_at?: string
-          uploaded_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "storage_assets_content_id_fkey"
-            columns: ["content_id"]
-            isOneToOne: false
-            referencedRelation: "contents"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "storage_assets_content_maker_channel_id_fkey"
-            columns: ["content_maker_channel_id"]
-            isOneToOne: false
-            referencedRelation: "content_maker_channels"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "storage_assets_episode_id_fkey"
-            columns: ["episode_id"]
-            isOneToOne: false
-            referencedRelation: "episodes"
             referencedColumns: ["id"]
           },
         ]
@@ -1728,6 +1795,16 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      current_user_is_admin: { Args: never; Returns: boolean }
+      extract_storage_object_key: { Args: { _url: string }; Returns: string }
+      get_active_content_maker_storage_delta: {
+        Args: { _owner_id: string }
+        Returns: number
+      }
+      get_effective_channel_storage_limit: {
+        Args: { _channel_id: string }
+        Returns: number
+      }
       get_effective_user_devices: {
         Args: { _user_id: string }
         Returns: {
@@ -1766,6 +1843,15 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      grant_content_maker_storage: {
+        Args: {
+          _delta_bytes: number
+          _duration_days?: number
+          _note?: string
+          _owner_user_id: string
+        }
+        Returns: string
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1773,34 +1859,22 @@ export type Database = {
         }
         Returns: boolean
       }
-      recalculate_all_channel_storage_usage: {
-        Args: Record<PropertyKey, never>
-        Returns: number
-      }
-      recalculate_channel_storage_usage: {
-        Args: { _channel_id: string }
+      list_content_maker_storage_grants: {
+        Args: never
         Returns: {
-          channel_id: string
-          max_storage_bytes: number
-          remaining_storage_bytes: number
-          used_storage_bytes: number
-        }[]
-      }
-      recalculate_owner_channel_storage_usage: {
-        Args: { _owner_id: string }
-        Returns: {
-          channel_id: string
-          max_storage_bytes: number
-          remaining_storage_bytes: number
-          used_storage_bytes: number
-        }[]
-      }
-      release_channel_storage: {
-        Args: { _bytes: number; _channel_id: string }
-        Returns: {
-          max_storage_bytes: number
-          remaining_storage_bytes: number
-          used_storage_bytes: number
+          channel_names: string
+          created_at: string
+          delta_bytes: number
+          expires_at: string
+          id: string
+          is_active: boolean
+          note: string
+          owner_name: string
+          owner_user_id: string
+          owner_username: string
+          remaining_days: number
+          revoked_at: string
+          starts_at: string
         }[]
       }
       mark_user_device_inactive: {
@@ -1841,33 +1915,6 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      grant_content_maker_storage: {
-        Args: {
-          _delta_bytes: number
-          _duration_days?: number | null
-          _note?: string | null
-          _owner_user_id: string
-        }
-        Returns: string
-      }
-      list_content_maker_storage_grants: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          channel_names: string | null
-          created_at: string
-          delta_bytes: number
-          expires_at: string | null
-          id: string
-          is_active: boolean
-          note: string | null
-          owner_name: string | null
-          owner_user_id: string
-          owner_username: string | null
-          remaining_days: number | null
-          revoked_at: string | null
-          starts_at: string
-        }[]
-      }
       prepare_user_device_login: { Args: { _device_id: string }; Returns: Json }
       purchase_premium_plan: {
         Args: { _plan_id: string }
@@ -1903,22 +1950,28 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      refresh_profile_subscription_state: {
-        Args: { _profile_id: string }
-        Returns: undefined
-      }
-      revoke_content_maker_storage_grant: {
-        Args: { _grant_id: string; _reason?: string | null }
-        Returns: boolean
-      }
-      reserve_channel_storage: {
-        Args: { _bytes: number; _channel_id: string }
+      recalculate_all_channel_storage_usage: { Args: never; Returns: number }
+      recalculate_channel_storage_usage: {
+        Args: { _channel_id: string }
         Returns: {
-          allowed: boolean
+          channel_id: string
           max_storage_bytes: number
           remaining_storage_bytes: number
           used_storage_bytes: number
         }[]
+      }
+      recalculate_owner_channel_storage_usage: {
+        Args: { _owner_id: string }
+        Returns: {
+          channel_id: string
+          max_storage_bytes: number
+          remaining_storage_bytes: number
+          used_storage_bytes: number
+        }[]
+      }
+      refresh_profile_subscription_state: {
+        Args: { _profile_id: string }
+        Returns: undefined
       }
       register_user_device: {
         Args: {
@@ -1970,6 +2023,14 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      release_channel_storage: {
+        Args: { _bytes: number; _channel_id: string }
+        Returns: {
+          max_storage_bytes: number
+          remaining_storage_bytes: number
+          used_storage_bytes: number
+        }[]
+      }
       replace_user_device: {
         Args: {
           _browser_name?: string
@@ -2020,12 +2081,33 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      reserve_channel_storage: {
+        Args: { _bytes: number; _channel_id: string }
+        Returns: {
+          allowed: boolean
+          max_storage_bytes: number
+          remaining_storage_bytes: number
+          used_storage_bytes: number
+        }[]
+      }
       resolve_user_device_limit: {
         Args: { _user_id: string }
         Returns: {
           max_devices: number
           plan_name: string
         }[]
+      }
+      revoke_content_maker_storage_grant: {
+        Args: { _grant_id: string; _reason?: string }
+        Returns: boolean
+      }
+      sync_channel_storage_limit: {
+        Args: { _channel_id: string }
+        Returns: number
+      }
+      sync_owner_channel_storage_usage: {
+        Args: { _owner_id?: string }
+        Returns: number
       }
     }
     Enums: {
