@@ -363,26 +363,22 @@ async function listBucketObjects(config: R2Config) {
     }
 
     const xml = await response.text();
-    const document = new DOMParser().parseFromString(xml, "application/xml");
-    const objectNodes = Array.from(document.querySelectorAll("Contents"));
+    const objectBlocks = xmlGetAllBlocks(xml, "Contents");
 
-    for (const node of objectNodes) {
-      const key = node.querySelector("Key")?.textContent?.trim();
+    for (const block of objectBlocks) {
+      const key = xmlGetTag(block, "Key");
       if (!key) continue;
 
-      const sizeText = node.querySelector("Size")?.textContent?.trim() || "";
+      const sizeText = xmlGetTag(block, "Size") || "";
       results.push({
         key,
         size: sizeText ? Number(sizeText) : null,
-        lastModified: node.querySelector("LastModified")?.textContent?.trim() || null,
+        lastModified: xmlGetTag(block, "LastModified") || null,
       });
     }
 
-    const isTruncated =
-      document.querySelector("IsTruncated")?.textContent?.trim() === "true";
-    continuationToken =
-      document.querySelector("NextContinuationToken")?.textContent?.trim() ||
-      null;
+    const isTruncated = xmlGetTag(xml, "IsTruncated")?.trim() === "true";
+    continuationToken = xmlGetTag(xml, "NextContinuationToken") || null;
 
     if (!isTruncated || !continuationToken) {
       break;
