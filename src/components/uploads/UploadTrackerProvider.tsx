@@ -15,12 +15,15 @@ import { formatErrorMessage } from "@/lib/errorMessage";
 import {
   getMediaJob,
   getMediaJobProgress,
+  type MediaJob,
 } from "@/lib/mediaService";
 import { formatBytes } from "@/lib/storageAssets";
+import { type UploadProgressDetails } from "@/lib/uploadProgress";
 import {
   UploadTaskContext,
   type StartUploadTaskInput,
   type UploadTask,
+  type UploadTaskStatus,
   type UploadTaskContextValue,
 } from "./uploadTrackerContext";
 
