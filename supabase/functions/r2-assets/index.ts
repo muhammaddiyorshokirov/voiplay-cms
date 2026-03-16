@@ -9,6 +9,18 @@ const corsHeaders = {
 
 const encoder = new TextEncoder();
 
+// Simple XML helpers (DOMParser is NOT available in Deno edge runtime)
+function xmlGetTag(xml: string, tag: string): string | null {
+  const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i");
+  const m = xml.match(re);
+  return m ? m[1].trim() : null;
+}
+
+function xmlGetAllBlocks(xml: string, tag: string): string[] {
+  const re = new RegExp(`<${tag}[^>]*>[\\s\\S]*?<\\/${tag}>`, "gi");
+  return xml.match(re) || [];
+}
+
 type CleanupAction = "list" | "cleanup-unused" | "sync-usage";
 
 interface R2Config {
