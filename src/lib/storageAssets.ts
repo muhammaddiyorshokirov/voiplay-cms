@@ -199,7 +199,7 @@ export async function syncStorageAssetsByUrls(links: StorageAssetLink[], context
 
   const { error } = await supabase
     .from("storage_assets")
-    .upsert(rows, { onConflict: "bucket_name,object_key" });
+    .upsert(rows as any, { onConflict: "bucket_name,object_key" });
 
   if (error) {
     throw error;

@@ -201,7 +201,7 @@ export function UploadTrackerProvider({ children }: { children: ReactNode }) {
       {
         id: taskId,
         title: input.title,
-        status: "uploading",
+        status: "uploading" as UploadTaskStatus,
         phase: input.phase || "Yuklanmoqda",
         progressPercent: 0,
         loadedBytes: 0,
