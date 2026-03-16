@@ -424,19 +424,15 @@ async function listObjectKeysByPrefix(config: R2Config, prefix: string) {
     }
 
     const xml = await response.text();
-    const document = new DOMParser().parseFromString(xml, "application/xml");
-    const objectNodes = Array.from(document.querySelectorAll("Contents"));
+    const objectBlocks = xmlGetAllBlocks(xml, "Contents");
 
-    for (const node of objectNodes) {
-      const key = node.querySelector("Key")?.textContent?.trim();
+    for (const block of objectBlocks) {
+      const key = xmlGetTag(block, "Key");
       if (key) results.push(key);
     }
 
-    const isTruncated =
-      document.querySelector("IsTruncated")?.textContent?.trim() === "true";
-    continuationToken =
-      document.querySelector("NextContinuationToken")?.textContent?.trim() ||
-      null;
+    const isTruncated = xmlGetTag(xml, "IsTruncated")?.trim() === "true";
+    continuationToken = xmlGetTag(xml, "NextContinuationToken") || null;
 
     if (!isTruncated || !continuationToken) {
       break;
