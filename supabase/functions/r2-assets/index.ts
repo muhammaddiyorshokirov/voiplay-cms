@@ -9,6 +9,18 @@ const corsHeaders = {
 
 const encoder = new TextEncoder();
 
+// Simple XML helpers (DOMParser is NOT available in Deno edge runtime)
+function xmlGetTag(xml: string, tag: string): string | null {
+  const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i");
+  const m = xml.match(re);
+  return m ? m[1].trim() : null;
+}
+
+function xmlGetAllBlocks(xml: string, tag: string): string[] {
+  const re = new RegExp(`<${tag}[^>]*>[\\s\\S]*?<\\/${tag}>`, "gi");
+  return xml.match(re) || [];
+}
+
 type CleanupAction = "list" | "cleanup-unused" | "sync-usage";
 
 interface R2Config {
@@ -351,26 +363,22 @@ async function listBucketObjects(config: R2Config) {
     }
 
     const xml = await response.text();
-    const document = new DOMParser().parseFromString(xml, "application/xml");
-    const objectNodes = Array.from(document.querySelectorAll("Contents"));
+    const objectBlocks = xmlGetAllBlocks(xml, "Contents");
 
-    for (const node of objectNodes) {
-      const key = node.querySelector("Key")?.textContent?.trim();
+    for (const block of objectBlocks) {
+      const key = xmlGetTag(block, "Key");
       if (!key) continue;
 
-      const sizeText = node.querySelector("Size")?.textContent?.trim() || "";
+      const sizeText = xmlGetTag(block, "Size") || "";
       results.push({
         key,
         size: sizeText ? Number(sizeText) : null,
-        lastModified: node.querySelector("LastModified")?.textContent?.trim() || null,
+        lastModified: xmlGetTag(block, "LastModified") || null,
       });
     }
 
-    const isTruncated =
-      document.querySelector("IsTruncated")?.textContent?.trim() === "true";
-    continuationToken =
-      document.querySelector("NextContinuationToken")?.textContent?.trim() ||
-      null;
+    const isTruncated = xmlGetTag(xml, "IsTruncated")?.trim() === "true";
+    continuationToken = xmlGetTag(xml, "NextContinuationToken") || null;
 
     if (!isTruncated || !continuationToken) {
       break;
@@ -416,19 +424,15 @@ async function listObjectKeysByPrefix(config: R2Config, prefix: string) {
     }
 
     const xml = await response.text();
-    const document = new DOMParser().parseFromString(xml, "application/xml");
-    const objectNodes = Array.from(document.querySelectorAll("Contents"));
+    const objectBlocks = xmlGetAllBlocks(xml, "Contents");
 
-    for (const node of objectNodes) {
-      const key = node.querySelector("Key")?.textContent?.trim();
+    for (const block of objectBlocks) {
+      const key = xmlGetTag(block, "Key");
       if (key) results.push(key);
     }
 
-    const isTruncated =
-      document.querySelector("IsTruncated")?.textContent?.trim() === "true";
-    continuationToken =
-      document.querySelector("NextContinuationToken")?.textContent?.trim() ||
-      null;
+    const isTruncated = xmlGetTag(xml, "IsTruncated")?.trim() === "true";
+    continuationToken = xmlGetTag(xml, "NextContinuationToken") || null;
 
     if (!isTruncated || !continuationToken) {
       break;
