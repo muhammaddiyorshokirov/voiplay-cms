@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Save, Shield, Upload, Bell, Palette, Film } from "lucide-react";
+import { AdminTelegramSettings } from "@/components/admin/AdminTelegramSettings";
 import {
   defaultUploadLimits,
   defaultVideoProcessingSettings,
