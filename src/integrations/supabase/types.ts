@@ -1384,6 +1384,212 @@ export type Database = {
         }
         Relationships: []
       }
+      telegram_bot_config: {
+        Row: {
+          bot_token: string | null
+          bot_username: string | null
+          id: number
+          is_enabled: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          bot_token?: string | null
+          bot_username?: string | null
+          id?: number
+          is_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          bot_token?: string | null
+          bot_username?: string | null
+          id?: number
+          is_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      telegram_bot_state: {
+        Row: {
+          id: number
+          update_offset: number
+          updated_at: string
+        }
+        Insert: {
+          id: number
+          update_offset?: number
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          update_offset?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      telegram_channel_links: {
+        Row: {
+          channel_id: string
+          channel_notifications_enabled: boolean
+          created_at: string
+          id: string
+          linked_at: string
+          telegram_channel_id: number
+          telegram_channel_title: string | null
+          telegram_channel_username: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          channel_id: string
+          channel_notifications_enabled?: boolean
+          created_at?: string
+          id?: string
+          linked_at?: string
+          telegram_channel_id: number
+          telegram_channel_title?: string | null
+          telegram_channel_username?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string
+          channel_notifications_enabled?: boolean
+          created_at?: string
+          id?: string
+          linked_at?: string
+          telegram_channel_id?: number
+          telegram_channel_title?: string | null
+          telegram_channel_username?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telegram_channel_links_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: true
+            referencedRelation: "content_maker_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      telegram_link_codes: {
+        Row: {
+          code: string
+          created_at: string
+          expires_at: string
+          id: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      telegram_links: {
+        Row: {
+          conversation_state: string | null
+          created_at: string
+          id: string
+          linked_at: string
+          my_notifications_enabled: boolean
+          telegram_chat_id: number
+          telegram_first_name: string | null
+          telegram_user_id: number
+          telegram_username: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          conversation_state?: string | null
+          created_at?: string
+          id?: string
+          linked_at?: string
+          my_notifications_enabled?: boolean
+          telegram_chat_id: number
+          telegram_first_name?: string | null
+          telegram_user_id: number
+          telegram_username?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          conversation_state?: string | null
+          created_at?: string
+          id?: string
+          linked_at?: string
+          my_notifications_enabled?: boolean
+          telegram_chat_id?: number
+          telegram_first_name?: string | null
+          telegram_user_id?: number
+          telegram_username?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      telegram_notification_log: {
+        Row: {
+          content_id: string | null
+          created_at: string
+          episode_id: string | null
+          error_message: string | null
+          event_type: string
+          id: string
+          message_text: string | null
+          status: string
+          target_chat_id: number
+          target_type: string
+          telegram_message_id: number | null
+          user_id: string | null
+        }
+        Insert: {
+          content_id?: string | null
+          created_at?: string
+          episode_id?: string | null
+          error_message?: string | null
+          event_type: string
+          id?: string
+          message_text?: string | null
+          status?: string
+          target_chat_id: number
+          target_type: string
+          telegram_message_id?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          content_id?: string | null
+          created_at?: string
+          episode_id?: string | null
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          message_text?: string | null
+          status?: string
+          target_chat_id?: number
+          target_type?: string
+          telegram_message_id?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       tokens: {
         Row: {
           created_at: string

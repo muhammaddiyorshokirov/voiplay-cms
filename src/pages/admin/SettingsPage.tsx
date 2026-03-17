@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Save, Shield, Upload, Bell, Palette, Film } from "lucide-react";
+import { AdminTelegramSettings } from "@/components/admin/AdminTelegramSettings";
 import {
   defaultUploadLimits,
   defaultVideoProcessingSettings,
@@ -264,6 +265,9 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+
+        {/* Telegram */}
+        <AdminTelegramSettings />
 
         {/* UI */}
         <section className="rounded-lg border border-border bg-card p-5 space-y-5">

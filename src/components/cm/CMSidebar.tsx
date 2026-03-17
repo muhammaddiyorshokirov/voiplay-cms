@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Film, ListVideo, Radio, LogOut, Tv, Send, Workflow, HardDrive
+  LayoutDashboard, Film, ListVideo, Radio, LogOut, Tv, Send, Workflow, HardDrive, Settings
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,6 +14,7 @@ const navItems = [
   { title: "Storage", url: "/cm/storage", icon: HardDrive },
   { title: "So'rovlarim", url: "/cm/requests", icon: Send },
   { title: "Kanal sozlamalari", url: "/cm/channel", icon: Radio },
+  { title: "Sozlamalar", url: "/cm/settings", icon: Settings },
 ];
 
 interface CMSidebarProps {

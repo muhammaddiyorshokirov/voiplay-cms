@@ -2,3 +2,9 @@ project_id = "lvxpkditcheotxbpqowj"
 
 [functions.r2-upload]
 verify_jwt = false
+
+[functions.telegram-bot]
+verify_jwt = false
+
+[functions.telegram-notify]
+verify_jwt = false

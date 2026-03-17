@@ -62,17 +62,35 @@ export default function ReviewQueuePage() {
 
   useEffect(() => { fetchAll(); }, []);
 
+  const sendTelegramNotify = async (eventType: string, opts: Record<string, any>) => {
+    try {
+      await supabase.functions.invoke("telegram-notify", {
+        body: { event_type: eventType, ...opts },
+      });
+    } catch { /* silent */ }
+  };
+
   const approveContent = async (id: string) => {
+    const content = draftContents.find(c => c.id === id);
     const { error } = await supabase.from("contents").update({ publish_status: "published", published_at: new Date().toISOString() }).eq("id", id);
     if (error) { toast.error(error.message); return; }
     toast.success("Kontent nashr qilindi");
+    if (content?.channel_id) {
+      const { data: ch } = await supabase.from("content_maker_channels").select("owner_id").eq("id", content.channel_id).maybeSingle();
+      if (ch?.owner_id) sendTelegramNotify("content_approved", { content_id: id, content_maker_user_id: ch.owner_id });
+    }
     fetchAll();
   };
 
   const approveEpisode = async (id: string) => {
+    const ep = unpublishedEpisodes.find(e => e.id === id);
     const { error } = await supabase.from("episodes").update({ is_published: true, status: "published" }).eq("id", id);
     if (error) { toast.error(error.message); return; }
     toast.success("Epizod nashr qilindi");
+    if (ep?.channel_id) {
+      const { data: ch } = await supabase.from("content_maker_channels").select("owner_id").eq("id", ep.channel_id).maybeSingle();
+      if (ch?.owner_id) sendTelegramNotify("episode_approved", { episode_id: id, content_maker_user_id: ch.owner_id });
+    }
     fetchAll();
   };
 
