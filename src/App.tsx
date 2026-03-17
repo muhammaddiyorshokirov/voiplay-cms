@@ -33,6 +33,7 @@ import CMEpisodesPage from "@/pages/cm/CMEpisodesPage";
 import CMChannelPage from "@/pages/cm/CMChannelPage";
 import CMRequestsPage from "@/pages/cm/CMRequestsPage";
 import CMMediaQueuePage from "@/pages/cm/CMMediaQueuePage";
+import CMSettingsPage from "@/pages/cm/CMSettingsPage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient({
