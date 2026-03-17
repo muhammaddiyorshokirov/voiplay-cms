@@ -45,9 +45,9 @@ export default function CMSettingsPage() {
         supabase.from("telegram_channel_links" as any).select("*").eq("user_id", user.id).maybeSingle(),
         supabase.from("telegram_bot_config" as any).select("is_enabled, bot_username").eq("id", 1).maybeSingle(),
       ]);
-      setTgLink(linkRes.data || null);
-      setChLink(chRes.data || null);
-      setBotInfo(botRes.data || null);
+      setTgLink((linkRes.data as any) || null);
+      setChLink((chRes.data as any) || null);
+      setBotInfo((botRes.data as any) || null);
     } catch (e: any) {
       toast.error(e.message);
     }

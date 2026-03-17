@@ -118,6 +118,7 @@ const App = () => (
                 <Route path="channel" element={<CMChannelPage />} />
                 <Route path="requests" element={<CMRequestsPage />} />
                 <Route path="media-queue" element={<CMMediaQueuePage />} />
+                <Route path="settings" element={<CMSettingsPage />} />
               </Route>
 
               <Route path="*" element={<NotFound />} />

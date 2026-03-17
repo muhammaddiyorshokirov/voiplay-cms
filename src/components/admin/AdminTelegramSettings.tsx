@@ -39,11 +39,12 @@ export function AdminTelegramSettings() {
         supabase.from("telegram_notification_log" as any).select("id", { count: "exact", head: true })
           .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString()),
       ]);
-      if (configRes.data) {
+      const cfgData = configRes.data as any;
+      if (cfgData) {
         setConfig({
-          bot_token: configRes.data.bot_token || "",
-          bot_username: configRes.data.bot_username || "",
-          is_enabled: configRes.data.is_enabled || false,
+          bot_token: cfgData.bot_token || "",
+          bot_username: cfgData.bot_username || "",
+          is_enabled: cfgData.is_enabled || false,
         });
       }
       setStats({

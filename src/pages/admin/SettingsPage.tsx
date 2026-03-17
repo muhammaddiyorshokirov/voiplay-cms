@@ -266,6 +266,9 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        {/* Telegram */}
+        <AdminTelegramSettings />
+
         {/* UI */}
         <section className="rounded-lg border border-border bg-card p-5 space-y-5">
           <div className="flex items-center gap-3">
