@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Film, ListVideo, Radio, LogOut, Tv, Send, Workflow, HardDrive
+  LayoutDashboard, Film, ListVideo, Radio, LogOut, Tv, Send, Workflow, HardDrive, Settings
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
