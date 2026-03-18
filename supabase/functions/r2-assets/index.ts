@@ -651,11 +651,31 @@ async function syncStorageUsage(
 
   const scopedRows = await listScopedStorageRows(serviceClient, role);
 
-  const staleRows = scopedRows.filter((row) => !objectMap.has(row.object_key));
-  const removedMetadataCount = await deleteScopedStorageRows(
-    serviceClient,
-    staleRows,
-  );
+  // Safety: only delete stale metadata if admin AND R2 listing looks complete.
+  // If R2 returned very few objects but DB has many, the listing likely timed out.
+  let removedMetadataCount = 0;
+  if (role.isAdmin) {
+    const staleRows = scopedRows.filter((row) => !objectMap.has(row.object_key));
+    const r2ObjectCount = bucketObjects.length;
+    const dbRowCount = scopedRows.length;
+
+    // Only delete stale rows if R2 returned at least 80% of what DB has,
+    // or if DB has very few rows (< 10). This prevents data loss from incomplete scans.
+    const scanLooksComplete =
+      dbRowCount < 10 || r2ObjectCount >= dbRowCount * 0.8;
+
+    if (scanLooksComplete && staleRows.length > 0) {
+      removedMetadataCount = await deleteScopedStorageRows(
+        serviceClient,
+        staleRows,
+      );
+    } else if (!scanLooksComplete && staleRows.length > 0) {
+      console.warn(
+        `Skipping stale row deletion: R2 returned ${r2ObjectCount} objects but DB has ${dbRowCount} rows. ` +
+        `${staleRows.length} rows would have been deleted. Scan may be incomplete.`
+      );
+    }
+  }
 
   const rowsToRefresh = scopedRows
     .map((row) => {
@@ -695,22 +715,13 @@ async function syncStorageUsage(
 
     if (error) throw error;
   } else {
-    const channelIds = [
-      ...new Set(
-        rowsToRefresh
-          .map((row) => row.content_maker_channel_id)
-          .filter((value): value is string => Boolean(value)),
-      ),
-    ];
+    // For content makers, recalculate all their channels at once
+    const { error } = await serviceClient.rpc(
+      "recalculate_owner_channel_storage_usage",
+      { _owner_id: role.userId },
+    );
 
-    for (const channelId of channelIds) {
-      const { error } = await serviceClient.rpc(
-        "recalculate_channel_storage_usage",
-        { _channel_id: channelId },
-      );
-
-      if (error) throw error;
-    }
+    if (error) throw error;
   }
 
   const inventory = await buildInventory(serviceClient, r2Config, role);
