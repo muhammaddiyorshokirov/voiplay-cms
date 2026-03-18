@@ -1508,6 +1508,7 @@ export type Database = {
           conversation_state: string | null
           created_at: string
           id: string
+          last_menu_message_id: number | null
           linked_at: string
           my_notifications_enabled: boolean
           telegram_chat_id: number
@@ -1521,6 +1522,7 @@ export type Database = {
           conversation_state?: string | null
           created_at?: string
           id?: string
+          last_menu_message_id?: number | null
           linked_at?: string
           my_notifications_enabled?: boolean
           telegram_chat_id: number
@@ -1534,6 +1536,7 @@ export type Database = {
           conversation_state?: string | null
           created_at?: string
           id?: string
+          last_menu_message_id?: number | null
           linked_at?: string
           my_notifications_enabled?: boolean
           telegram_chat_id?: number
