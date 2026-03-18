@@ -10,7 +10,6 @@ Deno.serve(async () => {
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  // Get bot config
   const { data: config } = await supabase
     .from("telegram_bot_config")
     .select("*")
@@ -23,7 +22,6 @@ Deno.serve(async () => {
 
   const API = `https://api.telegram.org/bot${config.bot_token}`;
 
-  // Get polling offset
   const { data: state } = await supabase
     .from("telegram_bot_state")
     .select("update_offset")
@@ -106,16 +104,27 @@ async function handleMessage(msg: any, supabase: any, api: string) {
   const text = msg.text?.trim() || "";
   const tgUserId = msg.from?.id;
 
-  // Forwarded channel message
+  // Forwarded channel message — handle channel linking
   if (msg.forward_from_chat?.type === "channel") {
     return handleForwardedChannel(msg, supabase, api);
   }
 
-  // /start CODE
+  // /start with or without code
   if (text.startsWith("/start")) {
     const code = text.split(/\s+/)[1]?.trim();
     if (code) return linkWithCode(chatId, tgUserId, msg.from, code, supabase, api);
-    return send(api, chatId, "👋 Assalomu alaykum! Bot orqali ulanish uchun paneldagi 5 xonali kodni yuboring.");
+
+    // /start without code — show menu if linked, welcome if not
+    const { data: link } = await supabase
+      .from("telegram_links")
+      .select("*")
+      .eq("telegram_user_id", tgUserId)
+      .maybeSingle();
+
+    if (link) {
+      return sendOrEditMenu(api, chatId, link, supabase);
+    }
+    return sendFresh(api, chatId, "👋 Assalomu alaykum\\!\n\nBot orqali ulanish uchun paneldagi *5 xonali kodni* yuboring yoki panel orqali olingan havola bilan kiring\\.");
   }
 
   // Plain 5-digit code
@@ -123,7 +132,7 @@ async function handleMessage(msg: any, supabase: any, api: string) {
     return linkWithCode(chatId, tgUserId, msg.from, text, supabase, api);
   }
 
-  // Check if user is linked and has active conversation state
+  // Check if user is linked
   const { data: link } = await supabase
     .from("telegram_links")
     .select("*")
@@ -131,14 +140,14 @@ async function handleMessage(msg: any, supabase: any, api: string) {
     .maybeSingle();
 
   if (link?.conversation_state === "awaiting_forward") {
-    return send(api, chatId, "❌ Bu oddiy xabar. Iltimos, kanalingizdagi istalgan postni menga *forward* qilib yuboring.", { parse_mode: "Markdown" });
+    return sendFresh(api, chatId, "❌ Bu oddiy xabar\\. Iltimos, kanalingizdagi istalgan postni menga *forward* qilib yuboring\\.");
   }
 
   if (link) {
-    return sendMainMenu(api, chatId, link, supabase);
+    return sendOrEditMenu(api, chatId, link, supabase);
   }
 
-  return send(api, chatId, "❓ Noto'g'ri format. Paneldagi 5 xonali kodni yuboring yoki /start buyrug'ini ishlating.");
+  return sendFresh(api, chatId, "❓ Noto'g'ri format\\. Paneldagi *5 xonali kodni* yuboring yoki /start buyrug'ini ishlating\\.");
 }
 
 // ---- Link Code Handler ----
@@ -153,7 +162,7 @@ async function linkWithCode(chatId: number, tgUserId: number, fromUser: any, cod
     .maybeSingle();
 
   if (!linkCode) {
-    return send(api, chatId, "❌ Kod noto'g'ri yoki eskirgan. Iltimos, paneldan yangi kod oling.");
+    return sendFresh(api, chatId, "❌ Kod noto'g'ri yoki eskirgan\\. Iltimos, paneldan yangi kod oling\\.");
   }
 
   // Upsert the telegram link
@@ -165,6 +174,7 @@ async function linkWithCode(chatId: number, tgUserId: number, fromUser: any, cod
       telegram_username: fromUser?.username || null,
       telegram_first_name: fromUser?.first_name || null,
       conversation_state: null,
+      last_menu_message_id: null,
       linked_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
@@ -183,13 +193,13 @@ async function linkWithCode(chatId: number, tgUserId: number, fromUser: any, cod
     .eq("user_id", linkCode.user_id)
     .single();
 
-  await send(api, chatId, "✅ Siz muvaffaqiyatli ulandingiz! Bot orqali bildirishnomalar olishingiz mumkin.");
-  return sendMainMenu(api, chatId, link, supabase);
+  // Send a single welcome + menu message (this becomes the persistent menu)
+  return sendOrEditMenu(api, chatId, link, supabase, "✅ Siz muvaffaqiyatli ulandingiz\\!\n\n");
 }
 
-// ---- Main Menu ----
+// ---- Build menu text & buttons ----
 
-async function sendMainMenu(api: string, chatId: number, link: any, supabase: any) {
+async function buildMenu(link: any, supabase: any, prefixText = "") {
   const { data: chLink } = await supabase
     .from("telegram_channel_links")
     .select("*")
@@ -214,20 +224,40 @@ async function sendMainMenu(api: string, chatId: number, link: any, supabase: an
 
   buttons.push([{ text: myNotifLabel, callback_data: "toggle_my_notif" }]);
 
-  let text = "📋 *Asosiy menyu*\n\n";
+  let text = prefixText + "📋 *Asosiy menyu*\n\n";
   if (chLink) {
-    text += `📢 Ulangan kanal: *${esc(chLink.telegram_channel_title || "Noma'lum")}*\n`;
+    text += `📢 Ulangan kanal: *${escV2(chLink.telegram_channel_title || "Noma'lum")}*\n`;
     if (chLink.telegram_channel_username) {
-      text += `Username: @${chLink.telegram_channel_username}\n`;
+      text += `Username: @${escV2(chLink.telegram_channel_username)}\n`;
     }
     text += "\n";
   }
   text += `Shaxsiy bildirishnoma: ${link.my_notifications_enabled ? "✅ Yoqilgan" : "❌ O'chirilgan"}`;
 
-  return send(api, chatId, text, {
-    parse_mode: "Markdown",
-    reply_markup: { inline_keyboard: buttons },
-  });
+  return { text, buttons };
+}
+
+// ---- Send or Edit the persistent menu message ----
+
+async function sendOrEditMenu(api: string, chatId: number, link: any, supabase: any, prefixText = "") {
+  const { text, buttons } = await buildMenu(link, supabase, prefixText);
+  const markup = { inline_keyboard: buttons };
+
+  // Try to edit existing menu message
+  if (link.last_menu_message_id) {
+    const edited = await editMessage(api, chatId, link.last_menu_message_id, text, markup);
+    if (edited) return; // Successfully edited, done
+  }
+
+  // Send new message and save its id
+  const msgId = await sendWithReply(api, chatId, text, markup);
+  if (msgId) {
+    await supabase
+      .from("telegram_links")
+      .update({ last_menu_message_id: msgId, updated_at: new Date().toISOString() })
+      .eq("id", link.id);
+    link.last_menu_message_id = msgId;
+  }
 }
 
 // ---- Callback Query Handler ----
@@ -236,8 +266,9 @@ async function handleCallbackQuery(query: any, supabase: any, api: string) {
   const chatId = query.message.chat.id;
   const tgUserId = query.from.id;
   const action = query.data;
+  const callbackMsgId = query.message.message_id;
 
-  // Answer callback
+  // Answer callback immediately
   await fetch(`${api}/answerCallbackQuery`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -251,7 +282,16 @@ async function handleCallbackQuery(query: any, supabase: any, api: string) {
     .maybeSingle();
 
   if (!link) {
-    return send(api, chatId, "❌ Siz hali ulanmagansiz. Avval paneldagi kodni yuboring.");
+    return sendFresh(api, chatId, "❌ Siz hali ulanmagansiz\\. Avval paneldagi kodni yuboring\\.");
+  }
+
+  // Ensure we track the current message for editing
+  if (!link.last_menu_message_id || link.last_menu_message_id !== callbackMsgId) {
+    await supabase
+      .from("telegram_links")
+      .update({ last_menu_message_id: callbackMsgId, updated_at: new Date().toISOString() })
+      .eq("id", link.id);
+    link.last_menu_message_id = callbackMsgId;
   }
 
   switch (action) {
@@ -264,15 +304,14 @@ async function handleCallbackQuery(query: any, supabase: any, api: string) {
     case "channel_cancel":
     case "unlink_cancel":
       await supabase.from("telegram_links").update({ conversation_state: null }).eq("id", link.id);
-      return sendMainMenu(api, chatId, link, supabase);
+      return sendOrEditMenu(api, chatId, link, supabase);
 
     case "unlink_channel":
-      return askUnlinkChannel(api, chatId);
+      return askUnlinkChannel(api, chatId, link);
 
     case "unlink_confirm":
       await supabase.from("telegram_channel_links").delete().eq("user_id", link.user_id);
-      await send(api, chatId, "✅ Kanal uzildi.");
-      return sendMainMenu(api, chatId, link, supabase);
+      return sendOrEditMenu(api, chatId, link, supabase, "✅ Kanal uzildi\\.\n\n");
 
     case "toggle_my_notif":
       await supabase
@@ -283,7 +322,7 @@ async function handleCallbackQuery(query: any, supabase: any, api: string) {
         })
         .eq("id", link.id);
       link.my_notifications_enabled = !link.my_notifications_enabled;
-      return sendMainMenu(api, chatId, link, supabase);
+      return sendOrEditMenu(api, chatId, link, supabase);
 
     case "toggle_channel_notif": {
       const { data: cl } = await supabase
@@ -300,7 +339,7 @@ async function handleCallbackQuery(query: any, supabase: any, api: string) {
           })
           .eq("id", cl.id);
       }
-      return sendMainMenu(api, chatId, link, supabase);
+      return sendOrEditMenu(api, chatId, link, supabase);
     }
   }
 }
@@ -317,17 +356,25 @@ async function startChannelLink(api: string, chatId: number, link: any, supabase
     "📢 *Kanal ulash*\n\n" +
     "1️⃣ Avval meni kanalingizga admin qiling\n" +
     "2️⃣ Eng kamida post yuborish huquqi bo'lishi kerak\n\n" +
-    "Tayyor bo'lsangiz *Qildim* tugmasini bosing.";
+    "Tayyor bo'lsangiz *Qildim* tugmasini bosing\\.";
 
-  return send(api, chatId, text, {
-    parse_mode: "Markdown",
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "✅ Qildim", callback_data: "channel_confirm" }],
-        [{ text: "❌ Bekor qilish", callback_data: "channel_cancel" }],
-      ],
-    },
-  });
+  const markup = {
+    inline_keyboard: [
+      [{ text: "✅ Qildim", callback_data: "channel_confirm" }],
+      [{ text: "❌ Bekor qilish", callback_data: "channel_cancel" }],
+    ],
+  };
+
+  // Edit the existing menu message to show channel link flow
+  if (link.last_menu_message_id) {
+    const edited = await editMessage(api, chatId, link.last_menu_message_id, text, markup);
+    if (edited) return;
+  }
+  const msgId = await sendWithReply(api, chatId, text, markup);
+  if (msgId) {
+    await supabase.from("telegram_links").update({ last_menu_message_id: msgId }).eq("id", link.id);
+    link.last_menu_message_id = msgId;
+  }
 }
 
 async function confirmChannelLink(api: string, chatId: number, link: any, supabase: any) {
@@ -336,12 +383,20 @@ async function confirmChannelLink(api: string, chatId: number, link: any, supaba
     .update({ conversation_state: "awaiting_forward" })
     .eq("id", link.id);
 
-  return send(api, chatId, "📩 Endi kanalingizdagi istalgan postni menga *forward* qilib yuboring.", {
-    parse_mode: "Markdown",
-    reply_markup: {
-      inline_keyboard: [[{ text: "❌ Bekor qilish", callback_data: "channel_cancel" }]],
-    },
-  });
+  const text = "📩 Endi kanalingizdagi istalgan postni menga *forward* qilib yuboring\\.";
+  const markup = {
+    inline_keyboard: [[{ text: "❌ Bekor qilish", callback_data: "channel_cancel" }]],
+  };
+
+  if (link.last_menu_message_id) {
+    const edited = await editMessage(api, chatId, link.last_menu_message_id, text, markup);
+    if (edited) return;
+  }
+  const msgId = await sendWithReply(api, chatId, text, markup);
+  if (msgId) {
+    await supabase.from("telegram_links").update({ last_menu_message_id: msgId }).eq("id", link.id);
+    link.last_menu_message_id = msgId;
+  }
 }
 
 async function handleForwardedChannel(msg: any, supabase: any, api: string) {
@@ -358,7 +413,7 @@ async function handleForwardedChannel(msg: any, supabase: any, api: string) {
   if (!link || link.conversation_state !== "awaiting_forward") return;
 
   if (fwd.type !== "channel") {
-    return send(api, chatId, "❌ Bu kanal emas. Iltimos, kanaldan post forward qiling.");
+    return sendFresh(api, chatId, "❌ Bu kanal emas\\. Iltimos, kanaldan post forward qiling\\.");
   }
 
   const tgChannelId = fwd.id;
@@ -374,8 +429,7 @@ async function handleForwardedChannel(msg: any, supabase: any, api: string) {
 
   if (existingCh && existingCh.user_id !== link.user_id) {
     await resetConversation(supabase, link.id);
-    await send(api, chatId, "❌ Bu kanal boshqa content makerga ulangan.");
-    return sendMainMenu(api, chatId, link, supabase);
+    return sendOrEditMenu(api, chatId, link, supabase, "❌ Bu kanal boshqa content makerga ulangan\\.\n\n");
   }
 
   // Check bot is admin of channel
@@ -390,19 +444,17 @@ async function handleForwardedChannel(msg: any, supabase: any, api: string) {
 
     if (!memberData.ok || !["administrator", "creator"].includes(memberData.result?.status)) {
       await resetConversation(supabase, link.id);
-      await send(api, chatId, "❌ Men bu kanalga admin emasman. Avval meni admin qiling va qayta urinib ko'ring.");
-      return sendMainMenu(api, chatId, link, supabase);
+      return sendOrEditMenu(api, chatId, link, supabase, "❌ Men bu kanalga admin emasman\\. Avval meni admin qiling\\.\n\n");
     }
 
     if (memberData.result?.status === "administrator" && !memberData.result?.can_post_messages) {
       await resetConversation(supabase, link.id);
-      await send(api, chatId, "❌ Menda post yuborish huquqi yo'q. Iltimos, huquqlarni tekshiring.");
-      return sendMainMenu(api, chatId, link, supabase);
+      return sendOrEditMenu(api, chatId, link, supabase, "❌ Menda post yuborish huquqi yo'q\\.\n\n");
     }
   } catch (e) {
     console.error("getChatMember error:", e);
     await resetConversation(supabase, link.id);
-    return send(api, chatId, "❌ Kanal tekshirilayotganda xatolik yuz berdi. Keyinroq urinib ko'ring.");
+    return sendOrEditMenu(api, chatId, link, supabase, "❌ Kanal tekshirilayotganda xatolik\\.\n\n");
   }
 
   // Get CM channel
@@ -415,7 +467,7 @@ async function handleForwardedChannel(msg: any, supabase: any, api: string) {
   const cmChannelId = cmChannels?.[0]?.id;
   if (!cmChannelId) {
     await resetConversation(supabase, link.id);
-    return send(api, chatId, "❌ Sizda kanal mavjud emas. Administrator bilan bog'laning.");
+    return sendOrEditMenu(api, chatId, link, supabase, "❌ Sizda kanal mavjud emas\\.\n\n");
   }
 
   // Upsert channel link
@@ -433,19 +485,23 @@ async function handleForwardedChannel(msg: any, supabase: any, api: string) {
   );
 
   await resetConversation(supabase, link.id);
-  await send(api, chatId, `✅ Kanal muvaffaqiyatli ulandi!\n\n📢 *${esc(tgChannelTitle)}*`, { parse_mode: "Markdown" });
-  return sendMainMenu(api, chatId, link, supabase);
+  return sendOrEditMenu(api, chatId, link, supabase, `✅ Kanal muvaffaqiyatli ulandi\\!\n📢 *${escV2(tgChannelTitle)}*\n\n`);
 }
 
-async function askUnlinkChannel(api: string, chatId: number) {
-  return send(api, chatId, "⚠️ Haqiqatan kanalni uzmoqchimisiz?", {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "✅ Ha, uzish", callback_data: "unlink_confirm" }],
-        [{ text: "❌ Bekor qilish", callback_data: "unlink_cancel" }],
-      ],
-    },
-  });
+async function askUnlinkChannel(api: string, chatId: number, link: any) {
+  const text = "⚠️ Haqiqatan kanalni uzmoqchimisiz?";
+  const markup = {
+    inline_keyboard: [
+      [{ text: "✅ Ha, uzish", callback_data: "unlink_confirm" }],
+      [{ text: "❌ Bekor qilish", callback_data: "unlink_cancel" }],
+    ],
+  };
+
+  if (link.last_menu_message_id) {
+    const edited = await editMessage(api, chatId, link.last_menu_message_id, text, markup);
+    if (edited) return;
+  }
+  await sendFresh(api, chatId, text, markup);
 }
 
 // ---- Helpers ----
@@ -463,18 +519,63 @@ async function getBotId(api: string): Promise<number> {
   return _botId;
 }
 
-function esc(s: string): string {
-  return s.replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
+/** Escape for MarkdownV2 */
+function escV2(s: string): string {
+  return s.replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, "\\$&");
 }
 
-async function send(api: string, chatId: number, text: string, extra: any = {}) {
+/** Send a new message (no reply markup tracking) */
+async function sendFresh(api: string, chatId: number, text: string, reply_markup?: any) {
   try {
     await fetch(`${api}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text, ...extra }),
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "MarkdownV2", ...(reply_markup ? { reply_markup } : {}) }),
     });
   } catch (e) {
     console.error("sendMessage error:", e);
+  }
+}
+
+/** Send a message and return the message_id */
+async function sendWithReply(api: string, chatId: number, text: string, reply_markup: any): Promise<number | null> {
+  try {
+    const resp = await fetch(`${api}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "MarkdownV2", reply_markup }),
+    });
+    const data = await resp.json();
+    return data.ok ? data.result.message_id : null;
+  } catch (e) {
+    console.error("sendMessage error:", e);
+    return null;
+  }
+}
+
+/** Edit an existing message. Returns true if successful. */
+async function editMessage(api: string, chatId: number, messageId: number, text: string, reply_markup: any): Promise<boolean> {
+  try {
+    const resp = await fetch(`${api}/editMessageText`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: "MarkdownV2",
+        reply_markup,
+      }),
+    });
+    const data = await resp.json();
+    if (data.ok) return true;
+    // If message is not modified (same content), that's fine
+    if (data.description?.includes("message is not modified")) return true;
+    // If message not found or too old, fall through to send new
+    console.error("editMessageText failed:", data.description);
+    return false;
+  } catch (e) {
+    console.error("editMessageText error:", e);
+    return false;
   }
 }
