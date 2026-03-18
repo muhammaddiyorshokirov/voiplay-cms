@@ -715,22 +715,13 @@ async function syncStorageUsage(
 
     if (error) throw error;
   } else {
-    const channelIds = [
-      ...new Set(
-        rowsToRefresh
-          .map((row) => row.content_maker_channel_id)
-          .filter((value): value is string => Boolean(value)),
-      ),
-    ];
+    // For content makers, recalculate all their channels at once
+    const { error } = await serviceClient.rpc(
+      "recalculate_owner_channel_storage_usage",
+      { _owner_id: role.userId },
+    );
 
-    for (const channelId of channelIds) {
-      const { error } = await serviceClient.rpc(
-        "recalculate_channel_storage_usage",
-        { _channel_id: channelId },
-      );
-
-      if (error) throw error;
-    }
+    if (error) throw error;
   }
 
   const inventory = await buildInventory(serviceClient, r2Config, role);
