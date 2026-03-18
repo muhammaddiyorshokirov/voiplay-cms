@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { isEpisodeEditorActive } from "@/lib/episodeDraft";
 
-const STORAGE_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+const STORAGE_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export const STORAGE_USAGE_SYNC_EVENT = "storage-usage-synced";
 
