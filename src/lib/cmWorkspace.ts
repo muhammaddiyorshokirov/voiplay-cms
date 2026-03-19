@@ -137,6 +137,8 @@ export function getRequestTypeLabel(type: Enums<"content_request_type">) {
       return "Kontent so'rovi";
     case "season":
       return "Fasl so'rovi";
+    case "episode":
+      return "Epizod so'rovi";
     default:
       return type;
   }

@@ -187,6 +187,37 @@ export default function ReviewQueuePage() {
         }).select("id").single();
         if (error) throw new Error("Fasl yaratishda xatolik: " + error.message);
         createdSeasonId = data?.id || null;
+      } else if (r.request_type === "episode") {
+        const { data, error } = await supabase.from("episodes").insert({
+          content_id: r.content_id,
+          channel_id: r.channel_id,
+          season_id: r.season_id,
+          episode_number: r.episode_number,
+          external_id: r.external_id || `cm-ep-${Date.now()}`,
+          title: r.title,
+          description: r.description,
+          video_url: r.video_url,
+          stream_url: r.stream_url,
+          subtitle_url: r.subtitle_url,
+          thumbnail_url: r.thumbnail_url,
+          duration_seconds: r.duration_seconds,
+          intro_start_seconds: r.intro_start_seconds,
+          intro_end_seconds: r.intro_end_seconds,
+          release_date: r.release_date,
+          premium_unlock_at: r.premium_unlock_at,
+          is_premium: r.is_premium ?? false,
+          is_comment_enabled: r.is_comment_enabled ?? true,
+          is_downloadable: r.is_downloadable ?? false,
+          is_published: true,
+          status: "published",
+        }).select("id").single();
+        if (error) throw new Error("Epizod yaratishda xatolik: " + error.message);
+        if (r.requested_by && data?.id) {
+          sendTelegramNotify("episode_approved", {
+            episode_id: data.id,
+            content_maker_user_id: r.requested_by,
+          });
+        }
       }
 
       const { error: requestError } = await supabase.from("content_requests" as any).update({
@@ -266,7 +297,11 @@ export default function ReviewQueuePage() {
                   <div>
                     <p className="font-medium text-foreground">{r.title || "—"}</p>
                     <p className="text-xs text-muted-foreground">
-                      {r.request_type === "content" ? `Kontent · ${typeLabels[r.content_type] || ""}` : "Fasl so'rovi"}
+                      {r.request_type === "content"
+                        ? `Kontent · ${typeLabels[r.content_type] || ""}`
+                        : r.request_type === "season"
+                          ? "Fasl so'rovi"
+                          : "Epizod so'rovi"}
                     </p>
                   </div>
                 ),
@@ -285,8 +320,9 @@ export default function ReviewQueuePage() {
                   <span className="text-sm text-muted-foreground">
                     {r.request_type === "content"
                       ? `${r.year || "?"} · ${r.country || "?"} · ${r.total_episodes || "?"} ep`
-                      : `${r.season_number}-fasl`
-                    }
+                      : r.request_type === "season"
+                        ? `${r.season_number}-fasl`
+                        : `${r.episode_number || "?"}-qism · ${r.media_processing_status || "pending"}`}
                   </span>
                 ),
               },
@@ -387,7 +423,11 @@ export default function ReviewQueuePage() {
               <div className="flex items-center gap-2 mb-2">
                 <StatusBadge status={selectedRequest.status} />
                 <span className="text-muted-foreground">
-                  {selectedRequest.request_type === "content" ? "Kontent so'rovi" : "Fasl so'rovi"}
+                  {selectedRequest.request_type === "content"
+                    ? "Kontent so'rovi"
+                    : selectedRequest.request_type === "season"
+                      ? "Fasl so'rovi"
+                      : "Epizod so'rovi"}
                 </span>
                 <span className="text-muted-foreground">·</span>
                 <span className="text-muted-foreground">{selectedRequest.content_maker_channels?.channel_name}</span>
@@ -407,10 +447,24 @@ export default function ReviewQueuePage() {
                   <div><span className="text-muted-foreground">Dublyaj:</span> <span className="text-foreground ml-1">{selectedRequest.has_dub ? "Ha" : "Yo'q"}</span></div>
                   <div><span className="text-muted-foreground">Subtitr:</span> <span className="text-foreground ml-1">{selectedRequest.has_subtitle ? "Ha" : "Yo'q"}</span></div>
                 </div>
-              ) : (
+              ) : selectedRequest.request_type === "season" ? (
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div><span className="text-muted-foreground">Fasl:</span> <span className="text-foreground ml-1 font-medium">{selectedRequest.season_number}-fasl</span></div>
                   <div><span className="text-muted-foreground">Nomi:</span> <span className="text-foreground ml-1">{selectedRequest.season_title || "—"}</span></div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div><span className="text-muted-foreground">Qism:</span> <span className="text-foreground ml-1 font-medium">{selectedRequest.episode_number || "—"}-qism</span></div>
+                  <div><span className="text-muted-foreground">External ID:</span> <span className="text-foreground ml-1">{selectedRequest.external_id || "—"}</span></div>
+                  <div><span className="text-muted-foreground">Kontent ID:</span> <span className="text-foreground ml-1 break-all">{selectedRequest.content_id || "—"}</span></div>
+                  <div><span className="text-muted-foreground">Fasl ID:</span> <span className="text-foreground ml-1 break-all">{selectedRequest.season_id || "—"}</span></div>
+                  <div><span className="text-muted-foreground">Media holati:</span> <span className="text-foreground ml-1">{selectedRequest.media_processing_status || "pending"}</span></div>
+                  <div><span className="text-muted-foreground">Premium:</span> <span className="text-foreground ml-1">{selectedRequest.is_premium ? "Ha" : "Yo'q"}</span></div>
+                  <div><span className="text-muted-foreground">Komment:</span> <span className="text-foreground ml-1">{selectedRequest.is_comment_enabled ? "Yoqilgan" : "O'chirilgan"}</span></div>
+                  <div><span className="text-muted-foreground">Yuklab olish:</span> <span className="text-foreground ml-1">{selectedRequest.is_downloadable ? "Yoqilgan" : "O'chirilgan"}</span></div>
+                  <div className="md:col-span-2"><span className="text-muted-foreground">Video:</span> <span className="text-foreground ml-1 break-all">{selectedRequest.video_url || "—"}</span></div>
+                  <div className="md:col-span-2"><span className="text-muted-foreground">Stream:</span> <span className="text-foreground ml-1 break-all">{selectedRequest.stream_url || "—"}</span></div>
+                  <div className="md:col-span-2"><span className="text-muted-foreground">Subtitle:</span> <span className="text-foreground ml-1 break-all">{selectedRequest.subtitle_url || "—"}</span></div>
                 </div>
               )}
 
@@ -475,7 +529,11 @@ export default function ReviewQueuePage() {
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">{selectedRequest.title}</span> —{" "}
-                {selectedRequest.request_type === "content" ? "kontent yaratiladi" : "fasl yaratiladi"}
+                {selectedRequest.request_type === "content"
+                  ? "kontent yaratiladi"
+                  : selectedRequest.request_type === "season"
+                    ? "fasl yaratiladi"
+                    : "epizod nashr qilinadi"}
               </p>
 
               {selectedRequest.request_type === "content" && (

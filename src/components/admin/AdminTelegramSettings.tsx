@@ -214,6 +214,12 @@ export function AdminTelegramSettings() {
           <Send className="h-4 w-4" /> {testing ? "Yuborilmoqda..." : "Test xabar"}
         </Button>
       </div>
+
+      <div className="rounded-md border border-border bg-background px-4 py-3 text-xs text-muted-foreground">
+        Bot endi episode so'rovi uchun ham ishlaydi: CM botdagi <span className="font-medium text-foreground">Episode so'rovi</span>
+        tugmasi yoki <span className="font-medium text-foreground">/episode</span> formati orqali metadata yuboradi,
+        so'rov review queue ga tushadi va tasdiqlangach kanal bildirishnomasi yoqilgan bo'lsa post yuboriladi.
+      </div>
     </section>
   );
 }
