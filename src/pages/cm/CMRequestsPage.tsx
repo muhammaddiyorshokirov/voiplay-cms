@@ -102,6 +102,17 @@ export default function CMRequestsPage() {
             ),
           },
           {
+            key: "media_processing_status",
+            header: "Media",
+            render: (request: CMRequestRow) => (
+              <span className="text-sm text-muted-foreground">
+                {request.request_type === "episode"
+                  ? request.media_processing_status || "pending"
+                  : "—"}
+              </span>
+            ),
+          },
+          {
             key: "created_at",
             header: "Yuborilgan",
             render: (request: CMRequestRow) => (
@@ -164,7 +175,7 @@ export default function CMRequestsPage() {
                       {getContentTypeLabel(selectedRequest.content_type)}
                     </p>
                   </div>
-                ) : (
+                ) : selectedRequest.request_type === "season" ? (
                   <div>
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">
                       Fasl
@@ -175,6 +186,27 @@ export default function CMRequestsPage() {
                         : "—"}
                     </p>
                   </div>
+                ) : (
+                  <>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Qism
+                      </p>
+                      <p className="mt-1 text-foreground">
+                        {selectedRequest.episode_number
+                          ? `${selectedRequest.episode_number}-qism`
+                          : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Media holati
+                      </p>
+                      <p className="mt-1 text-foreground">
+                        {selectedRequest.media_processing_status || "pending"}
+                      </p>
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -211,7 +243,7 @@ export default function CMRequestsPage() {
                     </p>
                   </div>
                 </div>
-              ) : (
+              ) : selectedRequest.request_type === "season" ? (
                 <div className="grid gap-3 md:grid-cols-2">
                   <div>
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -227,6 +259,49 @@ export default function CMRequestsPage() {
                     </p>
                     <p className="mt-1 break-all text-foreground">
                       {selectedRequest.content_id || "—"}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Kontent ID
+                    </p>
+                    <p className="mt-1 break-all text-foreground">
+                      {selectedRequest.content_id || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Fasl ID
+                    </p>
+                    <p className="mt-1 break-all text-foreground">
+                      {selectedRequest.season_id || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Video URL
+                    </p>
+                    <p className="mt-1 break-all text-foreground">
+                      {selectedRequest.video_url || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Stream URL
+                    </p>
+                    <p className="mt-1 break-all text-foreground">
+                      {selectedRequest.stream_url || "—"}
+                    </p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Media izohi
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap text-foreground">
+                      {selectedRequest.media_processing_notes || "—"}
                     </p>
                   </div>
                 </div>

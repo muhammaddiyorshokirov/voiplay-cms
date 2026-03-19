@@ -509,26 +509,44 @@ export type Database = {
           country: string | null
           created_at: string
           description: string | null
+          duration_seconds: number | null
+          episode_number: number | null
+          external_id: string | null
           genre_ids: string[] | null
           has_dub: boolean | null
           has_subtitle: boolean | null
           id: string
+          intro_end_seconds: number | null
+          intro_start_seconds: number | null
+          is_comment_enabled: boolean
+          is_downloadable: boolean
+          is_premium: boolean
+          media_processing_notes: string | null
+          media_processing_status: string
           poster_url: string | null
+          premium_unlock_at: string | null
+          release_date: string | null
           request_type: Database["public"]["Enums"]["content_request_type"]
           requested_by: string
           reviewed_at: string | null
           reviewed_by: string | null
           season_description: string | null
+          season_id: string | null
           season_number: number | null
           season_title: string | null
+          source_telegram_file_id: string | null
+          source_telegram_file_path: string | null
           status: Database["public"]["Enums"]["content_request_status"]
+          stream_url: string | null
           studio: string | null
+          subtitle_url: string | null
           thumbnail_url: string | null
           title: string | null
           total_episodes: number | null
           total_seasons: number | null
           trailer_url: string | null
           updated_at: string
+          video_url: string | null
           year: number | null
         }
         Insert: {
@@ -542,26 +560,44 @@ export type Database = {
           country?: string | null
           created_at?: string
           description?: string | null
+          duration_seconds?: number | null
+          episode_number?: number | null
+          external_id?: string | null
           genre_ids?: string[] | null
           has_dub?: boolean | null
           has_subtitle?: boolean | null
           id?: string
+          intro_end_seconds?: number | null
+          intro_start_seconds?: number | null
+          is_comment_enabled?: boolean
+          is_downloadable?: boolean
+          is_premium?: boolean
+          media_processing_notes?: string | null
+          media_processing_status?: string
           poster_url?: string | null
+          premium_unlock_at?: string | null
+          release_date?: string | null
           request_type?: Database["public"]["Enums"]["content_request_type"]
           requested_by: string
           reviewed_at?: string | null
           reviewed_by?: string | null
           season_description?: string | null
+          season_id?: string | null
           season_number?: number | null
           season_title?: string | null
+          source_telegram_file_id?: string | null
+          source_telegram_file_path?: string | null
           status?: Database["public"]["Enums"]["content_request_status"]
+          stream_url?: string | null
           studio?: string | null
+          subtitle_url?: string | null
           thumbnail_url?: string | null
           title?: string | null
           total_episodes?: number | null
           total_seasons?: number | null
           trailer_url?: string | null
           updated_at?: string
+          video_url?: string | null
           year?: number | null
         }
         Update: {
@@ -575,26 +611,44 @@ export type Database = {
           country?: string | null
           created_at?: string
           description?: string | null
+          duration_seconds?: number | null
+          episode_number?: number | null
+          external_id?: string | null
           genre_ids?: string[] | null
           has_dub?: boolean | null
           has_subtitle?: boolean | null
           id?: string
+          intro_end_seconds?: number | null
+          intro_start_seconds?: number | null
+          is_comment_enabled?: boolean
+          is_downloadable?: boolean
+          is_premium?: boolean
+          media_processing_notes?: string | null
+          media_processing_status?: string
           poster_url?: string | null
+          premium_unlock_at?: string | null
+          release_date?: string | null
           request_type?: Database["public"]["Enums"]["content_request_type"]
           requested_by?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
           season_description?: string | null
+          season_id?: string | null
           season_number?: number | null
           season_title?: string | null
+          source_telegram_file_id?: string | null
+          source_telegram_file_path?: string | null
           status?: Database["public"]["Enums"]["content_request_status"]
+          stream_url?: string | null
           studio?: string | null
+          subtitle_url?: string | null
           thumbnail_url?: string | null
           title?: string | null
           total_episodes?: number | null
           total_seasons?: number | null
           trailer_url?: string | null
           updated_at?: string
+          video_url?: string | null
           year?: number | null
         }
         Relationships: [
@@ -610,6 +664,13 @@ export type Database = {
             columns: ["content_id"]
             isOneToOne: false
             referencedRelation: "contents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_requests_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "seasons"
             referencedColumns: ["id"]
           },
         ]
@@ -2323,7 +2384,7 @@ export type Database = {
       app_role: "admin" | "user" | "content_maker"
       channel_status: "active" | "draft" | "hidden"
       content_request_status: "pending" | "approved" | "rejected"
-      content_request_type: "content" | "season"
+      content_request_type: "content" | "season" | "episode"
       content_status: "ongoing" | "completed" | "upcoming"
       content_type: "anime" | "serial" | "movie"
       episode_status: "draft" | "scheduled" | "published" | "archived"
@@ -2468,7 +2529,7 @@ export const Constants = {
       app_role: ["admin", "user", "content_maker"],
       channel_status: ["active", "draft", "hidden"],
       content_request_status: ["pending", "approved", "rejected"],
-      content_request_type: ["content", "season"],
+      content_request_type: ["content", "season", "episode"],
       content_status: ["ongoing", "completed", "upcoming"],
       content_type: ["anime", "serial", "movie"],
       episode_status: ["draft", "scheduled", "published", "archived"],
