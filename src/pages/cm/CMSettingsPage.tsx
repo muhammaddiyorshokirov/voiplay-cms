@@ -276,6 +276,15 @@ export default function CMSettingsPage() {
               </div>
             )}
 
+            <div className="rounded-md border border-border bg-background p-4">
+              <p className="text-sm font-medium text-foreground">Telegram orqali epizod so'rovi</p>
+              <p className="mt-2 text-xs leading-6 text-muted-foreground">
+                Bot ichida <span className="font-medium text-foreground">🎬 Episode so'rovi</span> tugmasini bosing yoki
+                <span className="font-medium text-foreground"> /episode</span> bilan boshlanuvchi xabar yuboring.
+                Bot kerakli formatni ko'rsatadi va yuborilgan metadata review queue ga tushadi.
+              </p>
+            </div>
+
             {/* Actions */}
             <div className="flex flex-wrap gap-2 pt-2">
               <Button variant="ghost-muted" size="sm" onClick={fetchData}>

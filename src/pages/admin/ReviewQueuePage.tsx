@@ -14,9 +14,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Tables } from "@/integrations/supabase/types";
+import { writeAppLog } from "@/lib/auditLog";
 
 type Content = Tables<"contents">;
 type Episode = Tables<"episodes"> & { contents?: { title: string } | null; seasons?: { season_number: number } | null };
+type RequestRow = Tables<"content_requests"> & {
+  content_maker_channels?: { channel_name: string | null } | null;
+};
 
 const typeLabels: Record<string, string> = { anime: "Anime", serial: "Serial", movie: "Kino" };
 
@@ -24,7 +28,7 @@ export default function ReviewQueuePage() {
   const { user } = useAuth();
   const [draftContents, setDraftContents] = useState<Content[]>([]);
   const [unpublishedEpisodes, setUnpublishedEpisodes] = useState<Episode[]>([]);
-  const [contentRequests, setContentRequests] = useState<any[]>([]);
+  const [contentRequests, setContentRequests] = useState<RequestRow[]>([]);
   const [genresById, setGenresById] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [selectedContent, setSelectedContent] = useState<Content | null>(null);
@@ -35,7 +39,7 @@ export default function ReviewQueuePage() {
 
   // Request detail/approve dialog
   const [requestDetailOpen, setRequestDetailOpen] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<any>(null);
+  const [selectedRequest, setSelectedRequest] = useState<RequestRow | null>(null);
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [approveForm, setApproveForm] = useState({
     slug: "",
@@ -45,19 +49,37 @@ export default function ReviewQueuePage() {
 
   const fetchAll = async () => {
     setLoading(true);
-    const [contentsRes, episodesRes, requestsRes, genresRes] = await Promise.all([
-      supabase.from("contents").select("*").eq("publish_status", "draft").is("deleted_at", null).order("created_at", { ascending: false }),
-      supabase.from("episodes").select("*, contents(title), seasons(season_number)").eq("is_published", false).order("created_at", { ascending: false }).limit(100),
-      supabase.from("content_requests" as any).select("*, content_maker_channels(channel_name)").eq("status", "pending").order("created_at", { ascending: false }),
-      supabase.from("genres").select("id, name"),
-    ]);
-    setDraftContents(contentsRes.data || []);
-    setUnpublishedEpisodes((episodesRes.data || []) as Episode[]);
-    setContentRequests(requestsRes.data || []);
-    setGenresById(
-      Object.fromEntries((genresRes.data || []).map((genre) => [genre.id, genre.name])),
-    );
-    setLoading(false);
+    try {
+      const [contentsRes, episodesRes, requestsRes, genresRes] = await Promise.all([
+        supabase.from("contents").select("*").eq("publish_status", "draft").is("deleted_at", null).order("created_at", { ascending: false }),
+        supabase.from("episodes").select("*, contents(title), seasons(season_number)").eq("is_published", false).order("created_at", { ascending: false }).limit(100),
+        supabase.from("content_requests").select("*, content_maker_channels(channel_name)").eq("status", "pending").order("created_at", { ascending: false }),
+        supabase.from("genres").select("id, name"),
+      ]);
+      if (contentsRes.error) throw contentsRes.error;
+      if (episodesRes.error) throw episodesRes.error;
+      if (requestsRes.error) throw requestsRes.error;
+      if (genresRes.error) throw genresRes.error;
+
+      setDraftContents(contentsRes.data || []);
+      setUnpublishedEpisodes((episodesRes.data || []) as Episode[]);
+      setContentRequests((requestsRes.data || []) as RequestRow[]);
+      setGenresById(
+        Object.fromEntries((genresRes.data || []).map((genre) => [genre.id, genre.name])),
+      );
+    } catch (error) {
+      await writeAppLog({
+        level: "error",
+        source: "admin-review-queue",
+        event: "review_queue_fetch_failed",
+        message: error instanceof Error ? error.message : "Review queue fetch failed",
+        path: "/admin/review",
+        userId: user?.id ?? null,
+      });
+      toast.error(error instanceof Error ? error.message : "Tekshiruv navbatini yuklab bo'lmadi");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchAll(); }, []);
@@ -73,8 +95,12 @@ export default function ReviewQueuePage() {
   const approveContent = async (id: string) => {
     const content = draftContents.find(c => c.id === id);
     const { error } = await supabase.from("contents").update({ publish_status: "published", published_at: new Date().toISOString() }).eq("id", id);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      await writeAppLog({ level: "error", source: "admin-review-queue", event: "content_approve_failed", message: error.message, path: "/admin/review", userId: user?.id ?? null, context: { contentId: id } });
+      toast.error(error.message); return;
+    }
     toast.success("Kontent nashr qilindi");
+    await writeAppLog({ level: "info", source: "admin-review-queue", event: "content_approved", message: "Kontent nashr qilindi", path: "/admin/review", userId: user?.id ?? null, context: { contentId: id, title: content?.title ?? null } });
     if (content?.channel_id) {
       const { data: ch } = await supabase.from("content_maker_channels").select("owner_id").eq("id", content.channel_id).maybeSingle();
       if (ch?.owner_id) sendTelegramNotify("content_approved", { content_id: id, content_maker_user_id: ch.owner_id });
@@ -85,8 +111,12 @@ export default function ReviewQueuePage() {
   const approveEpisode = async (id: string) => {
     const ep = unpublishedEpisodes.find(e => e.id === id);
     const { error } = await supabase.from("episodes").update({ is_published: true, status: "published" }).eq("id", id);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      await writeAppLog({ level: "error", source: "admin-review-queue", event: "episode_publish_failed", message: error.message, path: "/admin/review", userId: user?.id ?? null, context: { episodeId: id } });
+      toast.error(error.message); return;
+    }
     toast.success("Epizod nashr qilindi");
+    await writeAppLog({ level: "info", source: "admin-review-queue", event: "episode_published", message: "Epizod nashr qilindi", path: "/admin/review", userId: user?.id ?? null, context: { episodeId: id, episodeNumber: ep?.episode_number ?? null } });
     if (ep?.channel_id) {
       const { data: ch } = await supabase.from("content_maker_channels").select("owner_id").eq("id", ep.channel_id).maybeSingle();
       if (ch?.owner_id) sendTelegramNotify("episode_approved", { episode_id: id, content_maker_user_id: ch.owner_id });
@@ -103,13 +133,17 @@ export default function ReviewQueuePage() {
   const confirmReject = async () => {
     if (!rejectTarget) return;
     if (rejectTarget.type === "request") {
-      const { error } = await supabase.from("content_requests" as any).update({
+      const { error } = await supabase.from("content_requests").update({
         status: "rejected",
         admin_notes: rejectReason.trim().slice(0, 2000) || null,
         reviewed_by: user?.id,
         reviewed_at: new Date().toISOString(),
       }).eq("id", rejectTarget.id);
-      if (error) { toast.error(error.message); return; }
+      if (error) {
+        await writeAppLog({ level: "error", source: "admin-review-queue", event: "request_reject_failed", message: error.message, path: "/admin/review", userId: user?.id ?? null, context: { requestId: rejectTarget.id } });
+        toast.error(error.message); return;
+      }
+      await writeAppLog({ level: "warn", source: "admin-review-queue", event: "request_rejected", message: "CM so'rovi rad etildi", path: "/admin/review", userId: user?.id ?? null, context: { requestId: rejectTarget.id, reason: rejectReason.trim() || null } });
       toast.success("So'rov rad etildi");
     } else {
       toast.info("Rad etildi. Kontent qoralama holatida qoldirildi.");
@@ -119,7 +153,7 @@ export default function ReviewQueuePage() {
   };
 
   // ---- Request approval: create content or season ----
-  const openApproveRequest = (r: any) => {
+  const openApproveRequest = (r: RequestRow) => {
     setSelectedRequest(r);
     setApproveForm({
       slug: r.title ? r.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") : "",
@@ -135,6 +169,7 @@ export default function ReviewQueuePage() {
     let approvedContentId: string | null = r.content_id || null;
     let createdContentId: string | null = null;
     let createdSeasonId: string | null = null;
+    let createdEpisodeId: string | null = null;
 
     try {
       if (r.request_type === "content") {
@@ -187,9 +222,44 @@ export default function ReviewQueuePage() {
         }).select("id").single();
         if (error) throw new Error("Fasl yaratishda xatolik: " + error.message);
         createdSeasonId = data?.id || null;
+      } else if (r.request_type === "episode") {
+        if (!r.content_id || !r.episode_number) {
+          throw new Error("Episode so'rovida content_id yoki episode_number yetishmayapti");
+        }
+        const { data, error } = await supabase.from("episodes").insert({
+          content_id: r.content_id,
+          channel_id: r.channel_id,
+          season_id: r.season_id,
+          episode_number: r.episode_number,
+          external_id: r.external_id || `cm-ep-${Date.now()}`,
+          title: r.title,
+          description: r.description,
+          video_url: r.video_url,
+          stream_url: r.stream_url,
+          subtitle_url: r.subtitle_url,
+          thumbnail_url: r.thumbnail_url,
+          duration_seconds: r.duration_seconds,
+          intro_start_seconds: r.intro_start_seconds,
+          intro_end_seconds: r.intro_end_seconds,
+          release_date: r.release_date,
+          premium_unlock_at: r.premium_unlock_at,
+          is_premium: r.is_premium ?? false,
+          is_comment_enabled: r.is_comment_enabled ?? true,
+          is_downloadable: r.is_downloadable ?? false,
+          is_published: true,
+          status: "published",
+        }).select("id").single();
+        if (error) throw new Error("Epizod yaratishda xatolik: " + error.message);
+        createdEpisodeId = data?.id || null;
+        if (r.requested_by && data?.id) {
+          sendTelegramNotify("episode_approved", {
+            episode_id: data.id,
+            content_maker_user_id: r.requested_by,
+          });
+        }
       }
 
-      const { error: requestError } = await supabase.from("content_requests" as any).update({
+      const { error: requestError } = await supabase.from("content_requests").update({
         status: "approved",
         content_id: approvedContentId,
         admin_notes: approveForm.admin_notes.trim().slice(0, 2000) || null,
@@ -201,6 +271,15 @@ export default function ReviewQueuePage() {
         throw new Error("So'rov holatini yangilashda xatolik: " + requestError.message);
       }
 
+      await writeAppLog({
+        level: "info",
+        source: "admin-review-queue",
+        event: "request_approved",
+        message: "CM so'rovi tasdiqlandi",
+        path: "/admin/review",
+        userId: user?.id ?? null,
+        context: { requestId: r.id, requestType: r.request_type, contentId: approvedContentId },
+      });
       toast.success("So'rov tasdiqlandi va yaratildi!");
       setApproveDialogOpen(false);
       fetchAll();
@@ -213,14 +292,26 @@ export default function ReviewQueuePage() {
         await supabase.from("content_genres").delete().eq("content_id", createdContentId);
         await supabase.from("contents").delete().eq("id", createdContentId);
       }
+      if (createdEpisodeId) {
+        await supabase.from("episodes").delete().eq("id", createdEpisodeId);
+      }
 
       toast.error(
         error instanceof Error ? error.message : "So'rovni tasdiqlab bo'lmadi",
       );
+      await writeAppLog({
+        level: "error",
+        source: "admin-review-queue",
+        event: "request_approve_failed",
+        message: error instanceof Error ? error.message : "So'rovni tasdiqlab bo'lmadi",
+        path: "/admin/review",
+        userId: user?.id ?? null,
+        context: { requestId: r.id, requestType: r.request_type },
+      });
     }
   };
 
-  const viewRequestDetail = (r: any) => {
+  const viewRequestDetail = (r: RequestRow) => {
     setSelectedRequest(r);
     setRequestDetailOpen(true);
   };
@@ -266,7 +357,11 @@ export default function ReviewQueuePage() {
                   <div>
                     <p className="font-medium text-foreground">{r.title || "—"}</p>
                     <p className="text-xs text-muted-foreground">
-                      {r.request_type === "content" ? `Kontent · ${typeLabels[r.content_type] || ""}` : "Fasl so'rovi"}
+                      {r.request_type === "content"
+                        ? `Kontent · ${typeLabels[r.content_type] || ""}`
+                        : r.request_type === "season"
+                          ? "Fasl so'rovi"
+                          : "Epizod so'rovi"}
                     </p>
                   </div>
                 ),
@@ -285,8 +380,9 @@ export default function ReviewQueuePage() {
                   <span className="text-sm text-muted-foreground">
                     {r.request_type === "content"
                       ? `${r.year || "?"} · ${r.country || "?"} · ${r.total_episodes || "?"} ep`
-                      : `${r.season_number}-fasl`
-                    }
+                      : r.request_type === "season"
+                        ? `${r.season_number}-fasl`
+                        : `${r.episode_number || "?"}-qism · ${r.media_processing_status || "pending"}`}
                   </span>
                 ),
               },
@@ -387,7 +483,11 @@ export default function ReviewQueuePage() {
               <div className="flex items-center gap-2 mb-2">
                 <StatusBadge status={selectedRequest.status} />
                 <span className="text-muted-foreground">
-                  {selectedRequest.request_type === "content" ? "Kontent so'rovi" : "Fasl so'rovi"}
+                  {selectedRequest.request_type === "content"
+                    ? "Kontent so'rovi"
+                    : selectedRequest.request_type === "season"
+                      ? "Fasl so'rovi"
+                      : "Epizod so'rovi"}
                 </span>
                 <span className="text-muted-foreground">·</span>
                 <span className="text-muted-foreground">{selectedRequest.content_maker_channels?.channel_name}</span>
@@ -407,10 +507,25 @@ export default function ReviewQueuePage() {
                   <div><span className="text-muted-foreground">Dublyaj:</span> <span className="text-foreground ml-1">{selectedRequest.has_dub ? "Ha" : "Yo'q"}</span></div>
                   <div><span className="text-muted-foreground">Subtitr:</span> <span className="text-foreground ml-1">{selectedRequest.has_subtitle ? "Ha" : "Yo'q"}</span></div>
                 </div>
-              ) : (
+              ) : selectedRequest.request_type === "season" ? (
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div><span className="text-muted-foreground">Fasl:</span> <span className="text-foreground ml-1 font-medium">{selectedRequest.season_number}-fasl</span></div>
                   <div><span className="text-muted-foreground">Nomi:</span> <span className="text-foreground ml-1">{selectedRequest.season_title || "—"}</span></div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div><span className="text-muted-foreground">Qism:</span> <span className="text-foreground ml-1 font-medium">{selectedRequest.episode_number || "—"}-qism</span></div>
+                  <div><span className="text-muted-foreground">External ID:</span> <span className="text-foreground ml-1">{selectedRequest.external_id || "—"}</span></div>
+                  <div><span className="text-muted-foreground">Kontent ID:</span> <span className="text-foreground ml-1 break-all">{selectedRequest.content_id || "—"}</span></div>
+                  <div><span className="text-muted-foreground">Fasl ID:</span> <span className="text-foreground ml-1 break-all">{selectedRequest.season_id || "—"}</span></div>
+                  <div><span className="text-muted-foreground">Media holati:</span> <span className="text-foreground ml-1">{selectedRequest.media_processing_status || "pending"}</span></div>
+                  <div><span className="text-muted-foreground">Premium:</span> <span className="text-foreground ml-1">{selectedRequest.is_premium ? "Ha" : "Yo'q"}</span></div>
+                  <div><span className="text-muted-foreground">Komment:</span> <span className="text-foreground ml-1">{selectedRequest.is_comment_enabled ? "Yoqilgan" : "O'chirilgan"}</span></div>
+                  <div><span className="text-muted-foreground">Yuklab olish:</span> <span className="text-foreground ml-1">{selectedRequest.is_downloadable ? "Yoqilgan" : "O'chirilgan"}</span></div>
+                  <div className="md:col-span-2"><span className="text-muted-foreground">Video:</span> <span className="text-foreground ml-1 break-all">{selectedRequest.video_url || "—"}</span></div>
+                  <div className="md:col-span-2"><span className="text-muted-foreground">Stream:</span> <span className="text-foreground ml-1 break-all">{selectedRequest.stream_url || "—"}</span></div>
+                  <div className="md:col-span-2"><span className="text-muted-foreground">Subtitle:</span> <span className="text-foreground ml-1 break-all">{selectedRequest.subtitle_url || "—"}</span></div>
+                  <div className="md:col-span-2"><span className="text-muted-foreground">Media izohi:</span> <span className="text-foreground ml-1 whitespace-pre-wrap">{selectedRequest.media_processing_notes || "—"}</span></div>
                 </div>
               )}
 
@@ -475,7 +590,11 @@ export default function ReviewQueuePage() {
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">{selectedRequest.title}</span> —{" "}
-                {selectedRequest.request_type === "content" ? "kontent yaratiladi" : "fasl yaratiladi"}
+                {selectedRequest.request_type === "content"
+                  ? "kontent yaratiladi"
+                  : selectedRequest.request_type === "season"
+                    ? "fasl yaratiladi"
+                    : "epizod nashr qilinadi"}
               </p>
 
               {selectedRequest.request_type === "content" && (

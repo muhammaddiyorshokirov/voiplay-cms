@@ -52,12 +52,25 @@ Deno.serve(async () => {
       });
     } catch (e) {
       console.error("Telegram API fetch error:", e);
+      await writeAuditLog(supabase, {
+        level: "error",
+        source: "telegram-bot",
+        event: "telegram_api_fetch_error",
+        message: e instanceof Error ? e.message : "Telegram API fetch error",
+      });
       break;
     }
 
     const data = await response.json();
     if (!response.ok || !data.ok) {
       console.error("Telegram API error:", data);
+      await writeAuditLog(supabase, {
+        level: "error",
+        source: "telegram-bot",
+        event: "telegram_api_error",
+        message: "Telegram API getUpdates returned error",
+        context: data,
+      });
       return Response.json({ error: data }, { status: 502 });
     }
 
@@ -69,6 +82,14 @@ Deno.serve(async () => {
         await handleUpdate(update, supabase, API);
       } catch (e) {
         console.error("Error handling update:", update.update_id, e);
+        await writeAuditLog(supabase, {
+          level: "error",
+          source: "telegram-bot",
+          event: "update_handle_failed",
+          message: e instanceof Error ? e.message : "Telegram update failed",
+          request_id: String(update.update_id),
+          context: { updateId: update.update_id },
+        });
       }
     }
 
@@ -101,7 +122,7 @@ async function handleUpdate(update: any, supabase: any, api: string) {
 
 async function handleMessage(msg: any, supabase: any, api: string) {
   const chatId = msg.chat.id;
-  const text = msg.text?.trim() || "";
+  const text = msg.text?.trim() || msg.caption?.trim() || "";
   const tgUserId = msg.from?.id;
 
   // Forwarded channel message — handle channel linking
@@ -141,6 +162,17 @@ async function handleMessage(msg: any, supabase: any, api: string) {
 
   if (link?.conversation_state === "awaiting_forward") {
     return sendFresh(api, chatId, "❌ Bu oddiy xabar\\. Iltimos, kanalingizdagi istalgan postni menga *forward* qilib yuboring\\.");
+  }
+
+  if (link && (text.startsWith("/episode") || text.startsWith("episode:"))) {
+    return createEpisodeRequestFromTelegram({
+      api,
+      chatId,
+      link,
+      msg,
+      rawText: text,
+      supabase,
+    });
   }
 
   if (link) {
@@ -222,6 +254,7 @@ async function buildMenu(link: any, supabase: any, prefixText = "") {
     buttons.push([{ text: "📢 Kanal ulash", callback_data: "link_channel" }]);
   }
 
+  buttons.push([{ text: "🎬 Episode so'rovi", callback_data: "episode_request_help" }]);
   buttons.push([{ text: myNotifLabel, callback_data: "toggle_my_notif" }]);
 
   let text = prefixText + "📋 *Asosiy menyu*\n\n";
@@ -308,6 +341,9 @@ async function handleCallbackQuery(query: any, supabase: any, api: string) {
 
     case "unlink_channel":
       return askUnlinkChannel(api, chatId, link);
+
+    case "episode_request_help":
+      return sendEpisodeRequestHelp(api, chatId, link, supabase);
 
     case "unlink_confirm":
       await supabase.from("telegram_channel_links").delete().eq("user_id", link.user_id);
@@ -504,7 +540,287 @@ async function askUnlinkChannel(api: string, chatId: number, link: any) {
   await sendFresh(api, chatId, text, markup);
 }
 
+async function sendEpisodeRequestHelp(api: string, chatId: number, link: any, supabase: any) {
+  const { data: channels } = await supabase
+    .from("content_maker_channels")
+    .select("id")
+    .eq("owner_id", link.user_id);
+  const channelIds = (channels || []).map((item: any) => item.id);
+  const { data: contents } = channelIds.length === 0
+    ? { data: [] }
+    : await supabase
+        .from("contents")
+        .select("id, title")
+        .in("channel_id", channelIds)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+  const contentLines = (contents || [])
+    .map((item: any) => `• ${escV2(item.title || "Kontent")} \\(${escV2(item.id)}\\)`)
+    .join("\n");
+
+  const text =
+    "🎬 *Episode so'rovi yuborish*\n\n" +
+    "Bitta xabarda quyidagi formatni yuboring\\. Xabarga video yoki document biriktirsangiz, men linkini so'rovga qo'shaman\\.\n\n" +
+    "`/episode`\n" +
+    "`content: kontent id yoki nomi`\n" +
+    "`season: season id, season raqami yoki none`\n" +
+    "`episode_number: 12`\n" +
+    "`title: 12\\-qism`\n" +
+    "`description: qisqacha tavsif`\n" +
+    "`external_id: ixtiyoriy`\n" +
+    "`is_premium: false`\n" +
+    "`is_downloadable: false`\n\n" +
+    (contentLines ? `*So'nggi kontentlaringiz:*\n${contentLines}\n\n` : "") +
+    "Yuborilgan so'rov admin review queue ga tushadi\\.";
+
+  return sendFresh(api, chatId, text);
+}
+
+async function createEpisodeRequestFromTelegram({
+  api,
+  chatId,
+  link,
+  msg,
+  rawText,
+  supabase,
+}: {
+  api: string;
+  chatId: number;
+  link: any;
+  msg: any;
+  rawText: string;
+  supabase: any;
+}) {
+  const requestId = crypto.randomUUID();
+  const parsed = parseEpisodePayload(rawText);
+  if (!parsed.content || !parsed.episode_number || !Number.isInteger(parsed.episode_number) || parsed.episode_number < 1) {
+    await writeAuditLog(supabase, {
+      level: "warn",
+      source: "telegram-bot",
+      event: "episode_request_invalid_payload",
+      message: "Episode payload is incomplete or invalid",
+      user_id: link.user_id,
+      request_id: requestId,
+      context: { rawText },
+    });
+    return sendFresh(api, chatId, "❌ Episode format to'liq emas\\. Menyudagi *Episode so'rovi* tugmasini bosib namunani oling\\.");
+  }
+
+  const target = await resolveEpisodeTarget(link.user_id, parsed, supabase);
+  if (!target.content) {
+    await writeAuditLog(supabase, {
+      level: "warn",
+      source: "telegram-bot",
+      event: "episode_request_content_not_found",
+      message: "Episode request content could not be resolved",
+      user_id: link.user_id,
+      request_id: requestId,
+      context: { requestedContent: parsed.content, requestedSeason: parsed.season },
+    });
+    return sendFresh(api, chatId, "❌ Kontent topilmadi\\. Kontent ID yoki aniq nom yuboring\\.");
+  }
+
+  const telegramFile = await extractTelegramFile(api, msg);
+  const { data: duplicatePending } = await supabase
+    .from("content_requests")
+    .select("id")
+    .eq("request_type", "episode")
+    .eq("requested_by", link.user_id)
+    .eq("content_id", target.content.id)
+    .eq("episode_number", parsed.episode_number)
+    .eq("status", "pending")
+    .maybeSingle();
+
+  if (duplicatePending) {
+    await writeAuditLog(supabase, {
+      level: "warn",
+      source: "telegram-bot",
+      event: "episode_request_duplicate_pending",
+      message: "Duplicate pending episode request blocked",
+      user_id: link.user_id,
+      request_id: requestId,
+      context: { contentId: target.content.id, episodeNumber: parsed.episode_number, requestId: duplicatePending.id },
+    });
+    return sendFresh(api, chatId, "⚠️ Shu qism uchun pending so'rov allaqachon mavjud\\.");
+  }
+
+  const requestPayload: Record<string, unknown> = {
+    request_type: "episode",
+    requested_by: link.user_id,
+    channel_id: target.content.channel_id,
+    content_id: target.content.id,
+    season_id: target.season?.id || null,
+    title: parsed.title || `${target.content.title} — ${parsed.episode_number}-qism`,
+    description: parsed.description || null,
+    episode_number: parsed.episode_number,
+    external_id: parsed.external_id || null,
+    is_premium: parsed.is_premium ?? false,
+    is_downloadable: parsed.is_downloadable ?? false,
+    is_comment_enabled: parsed.is_comment_enabled ?? true,
+    video_url: parsed.video_url || telegramFile?.url || null,
+    stream_url: parsed.stream_url || null,
+    subtitle_url: parsed.subtitle_url || null,
+    thumbnail_url: parsed.thumbnail_url || null,
+    media_processing_status: telegramFile?.url ? "uploaded_from_telegram" : "pending",
+    media_processing_notes: telegramFile?.note || null,
+    source_telegram_file_id: telegramFile?.fileId || null,
+    source_telegram_file_path: telegramFile?.filePath || null,
+  };
+
+  const { error } = await supabase.from("content_requests").insert(requestPayload);
+  if (error) {
+    console.error("episode request insert error:", error);
+    await writeAuditLog(supabase, {
+      level: "error",
+      source: "telegram-bot",
+      event: "episode_request_insert_failed",
+      message: error.message,
+      user_id: link.user_id,
+      request_id: requestId,
+      context: { contentId: target.content.id, seasonId: target.season?.id || null, episodeNumber: parsed.episode_number },
+    });
+    return sendFresh(api, chatId, "❌ Episode so'rovini saqlab bo'lmadi\\. Keyinroq urinib ko'ring\\.");
+  }
+
+  await writeAuditLog(supabase, {
+    level: telegramFile?.url ? "info" : "warn",
+    source: "telegram-bot",
+    event: "episode_request_created",
+    message: telegramFile?.url
+      ? "Telegram orqali episode so'rovi yaratildi"
+      : "Episode so'rovi yaratildi, lekin media biriktirilmagan",
+    user_id: link.user_id,
+    request_id: requestId,
+    context: {
+      contentId: target.content.id,
+      seasonId: target.season?.id || null,
+      episodeNumber: parsed.episode_number,
+      mediaStatus: telegramFile?.url ? "uploaded_from_telegram" : "pending",
+    },
+  });
+
+  return sendFresh(
+    api,
+    chatId,
+    `✅ Episode so'rovi qabul qilindi\\!\n\n📺 ${escV2(target.content.title || "Kontent")}\n🎞 ${parsed.episode_number}\\-qism\n🧾 Holat: review queue`,
+  );
+}
+
+function parseEpisodePayload(rawText: string) {
+  const lines = rawText.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const pairs = new Map<string, string>();
+
+  for (const line of lines) {
+    if (line === "/episode") continue;
+    const normalized = line.replace(/^episode:\s*/i, "content: ");
+    const idx = normalized.indexOf(":");
+    if (idx === -1) continue;
+    pairs.set(normalized.slice(0, idx).trim().toLowerCase(), normalized.slice(idx + 1).trim());
+  }
+
+  const toBool = (value?: string) => value ? ["1", "true", "yes", "ha", "on"].includes(value.toLowerCase()) : undefined;
+
+  return {
+    content: pairs.get("content"),
+    season: pairs.get("season"),
+    episode_number: pairs.get("episode_number") ? Number(pairs.get("episode_number")) : null,
+    title: pairs.get("title"),
+    description: pairs.get("description"),
+    external_id: pairs.get("external_id"),
+    video_url: pairs.get("video_url"),
+    stream_url: pairs.get("stream_url"),
+    subtitle_url: pairs.get("subtitle_url"),
+    thumbnail_url: pairs.get("thumbnail_url"),
+    is_premium: toBool(pairs.get("is_premium")),
+    is_downloadable: toBool(pairs.get("is_downloadable")),
+    is_comment_enabled: toBool(pairs.get("is_comment_enabled")),
+  };
+}
+
+async function resolveEpisodeTarget(userId: string, parsed: any, supabase: any) {
+  const { data: channels } = await supabase
+    .from("content_maker_channels")
+    .select("id")
+    .eq("owner_id", userId);
+  const channelIds = (channels || []).map((item: any) => item.id);
+  if (channelIds.length === 0) return { content: null, season: null };
+
+  const { data: contents } = await supabase
+    .from("contents")
+    .select("id, title, channel_id")
+    .in("channel_id", channelIds);
+
+  const content = (contents || []).find((item: any) =>
+    item.id === parsed.content || item.title?.toLowerCase() === String(parsed.content || "").toLowerCase(),
+  ) || null;
+
+  let season = null;
+  if (content && parsed.season && parsed.season.toLowerCase() !== "none") {
+    const { data: seasons } = await supabase
+      .from("seasons")
+      .select("id, season_number, title")
+      .eq("content_id", content.id);
+    season = (seasons || []).find((item: any) =>
+      item.id === parsed.season ||
+      String(item.season_number) === parsed.season ||
+      item.title?.toLowerCase() === String(parsed.season || "").toLowerCase(),
+    ) || null;
+  }
+
+  return { content, season };
+}
+
+async function extractTelegramFile(api: string, msg: any) {
+  const file = msg.document || msg.video || null;
+  if (!file?.file_id) return null;
+
+  const resp = await fetch(`${api}/getFile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file_id: file.file_id }),
+  });
+  const data = await resp.json();
+  if (!data.ok || !data.result?.file_path) return null;
+  const botIndex = api.indexOf("/bot");
+  const baseApi = botIndex === -1 ? api : api.slice(0, botIndex);
+  const token = botIndex === -1 ? "" : api.slice(botIndex + 4);
+
+  return {
+    fileId: file.file_id,
+    filePath: data.result.file_path,
+    url: `${baseApi}/file/bot${token}/${data.result.file_path}`,
+    note: "Telegram attachment received. Convert via media service before approval.",
+  };
+}
+
 // ---- Helpers ----
+
+async function writeAuditLog(supabase: any, payload: {
+  level: string;
+  source: string;
+  message: string;
+  event?: string | null;
+  user_id?: string | null;
+  path?: string | null;
+  request_id?: string | null;
+  context?: Record<string, unknown> | null;
+}) {
+  const { error } = await supabase.from("app_logs").insert({
+    level: payload.level,
+    source: payload.source,
+    message: payload.message,
+    event: payload.event || null,
+    user_id: payload.user_id || null,
+    path: payload.path || null,
+    request_id: payload.request_id || null,
+    context: payload.context || {},
+  });
+
+  if (error) {
+    console.error("writeAuditLog error:", error);
+  }
+}
 
 async function resetConversation(supabase: any, linkId: string) {
   await supabase.from("telegram_links").update({ conversation_state: null }).eq("id", linkId);

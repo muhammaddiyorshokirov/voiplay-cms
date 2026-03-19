@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, AlertCircle, Info, AlertTriangle } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type AppLog = Tables<"app_logs">;
 
@@ -21,6 +22,7 @@ export default function AuditLogsPage() {
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [selectedLog, setSelectedLog] = useState<AppLog | null>(null);
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -103,10 +105,14 @@ export default function AuditLogsPage() {
           {
             key: "message", header: "Xabar",
             render: (l) => (
-              <div>
+              <button
+                type="button"
+                className="text-left"
+                onClick={() => setSelectedLog(l)}
+              >
                 <p className="text-sm text-foreground">{l.message}</p>
                 {l.event && <p className="text-xs text-muted-foreground mt-0.5">Hodisa: {l.event}</p>}
-              </div>
+              </button>
             ),
           },
           { key: "source", header: "Manba", render: (l) => <span className="text-sm text-muted-foreground rounded bg-muted px-2 py-0.5">{l.source}</span> },
@@ -121,6 +127,39 @@ export default function AuditLogsPage() {
           },
         ]}
       />
+
+      <Dialog open={Boolean(selectedLog)} onOpenChange={(open) => !open && setSelectedLog(null)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto border-border bg-card">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-foreground">Audit log tafsiloti</DialogTitle>
+          </DialogHeader>
+
+          {selectedLog ? (
+            <div className="space-y-4 text-sm">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div><span className="text-muted-foreground">Daraja:</span> <span className="ml-1 text-foreground">{selectedLog.level}</span></div>
+                <div><span className="text-muted-foreground">Manba:</span> <span className="ml-1 text-foreground">{selectedLog.source}</span></div>
+                <div><span className="text-muted-foreground">Hodisa:</span> <span className="ml-1 text-foreground">{selectedLog.event || "—"}</span></div>
+                <div><span className="text-muted-foreground">Vaqt:</span> <span className="ml-1 text-foreground">{new Date(selectedLog.created_at).toLocaleString("uz")}</span></div>
+                <div><span className="text-muted-foreground">Yo'l:</span> <span className="ml-1 text-foreground">{selectedLog.path || "—"}</span></div>
+                <div><span className="text-muted-foreground">Request ID:</span> <span className="ml-1 text-foreground">{selectedLog.request_id || "—"}</span></div>
+              </div>
+
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Xabar</p>
+                <p className="mt-2 whitespace-pre-wrap text-foreground">{selectedLog.message}</p>
+              </div>
+
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Context</p>
+                <pre className="mt-2 overflow-x-auto rounded-md bg-background p-3 text-xs text-foreground">
+                  {JSON.stringify(selectedLog.context ?? {}, null, 2)}
+                </pre>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
